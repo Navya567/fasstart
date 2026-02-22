@@ -154,10 +154,11 @@ Implementation MUST use Bedrock AgentCore for AI sequencing and MUST NOT use Ste
 | **1. Document validation** | Validate technical correctness | S3 docs, policy | Valid/invalid, metadata | DOCS_TECHNICALLY_VALIDATED | §5.4 table |
 | **2. Data extraction** | Extract structured fields | Validated docs, policy | JSON fields, confidence | DATA_EXTRACTED | §5.4 table |
 | **3. Policy evaluation** | Check rules, eligibility | Extracted data, policy | Rule results, explanations | POLICY_VALIDATED | §5.4 table |
-| **4. Case summary & recommendation** | Synthesise case summary | All prior outputs | Human-readable summary + recommendation | READY_FOR_CASEWORKER_REVIEW | §5.4 table |
+| **4. Case summary & recommendation** | Synthesise case summary | All prior outputs | Human-readable summary + recommendation | SUMMARY_READY | §5.4 table |
+| **5. Mark ready for review** | Release workflow lock, emit readiness event | Summary outputs, case state | Lock released, CASE_AI_READY_FOR_REVIEW emitted (idempotent) | READY_FOR_CASEWORKER_REVIEW | §5.4 table |
 
-**Readiness responsibilities:**
-The step that transitions a case to `READY_FOR_CASEWORKER_REVIEW` MUST also (a) release any workflow lock, and (b) emit `CASE_AI_READY_FOR_REVIEW` **idempotently**. If implemented as a separate step/tool, it MUST be explicitly implemented and tested. Ref: §5.4, §5.8, §5.9.6
+**Readiness responsibilities (tool #5):**
+Tool #5 ("Mark ready for review") transitions a case from `SUMMARY_READY` to `READY_FOR_CASEWORKER_REVIEW` and MUST (a) release any workflow lock, and (b) emit `CASE_AI_READY_FOR_REVIEW` **idempotently**. This is an explicit, separately testable tool in the pipeline. Ref: §5.4, §5.8, §5.9.6
 
 ### 4.4 AI Services
 
@@ -305,7 +306,6 @@ The following are left for product/architecture decisions; the checklist does no
 2. **Strands Agents SDK:** v1.2 states “optionally via Strands Agents SDK or equivalent.” Whether “equivalent” includes any Bedrock AgentCore-compatible runtime is an implementation choice.
 3. **Manual replay mechanism:** v1.2 says the system MAY support replay and lists examples; which mechanism(s) to implement is a project decision.
 4. **Stage SLA threshold values:** v1.2 requires that thresholds be defined and published but does not specify numeric values; those are operational/contract decisions.
-5. **Single-step vs two-step Summary→Ready transition:** §5.4 table shows tool #4 ("Case summary & recommendation") transitioning directly to `READY_FOR_CASEWORKER_REVIEW`. However, §5.9.1 lists `SUMMARY_READY` as a valid non-terminal status, and §5.9.2 lists "Recommendation/Summary" and "Mark Ready / readiness event emission" as separate SLA stages — implying a possible intermediate `SUMMARY_READY` status and a distinct "Mark Ready" step. Whether the implementation uses a single-step or two-step transition (with `SUMMARY_READY` as an intermediate status) is not resolved by v1.2 and should be agreed separately.
 
 ---
 
@@ -365,7 +365,7 @@ Published thresholds (time-to-progress) must exist for each stage:
 | Data Extraction | `DOCS_TECHNICALLY_VALIDATED` |
 | Policy Evaluation | `DATA_EXTRACTED` |
 | Recommendation/Summary | `POLICY_VALIDATED` |
-| Mark Ready / readiness event | transition to `READY_FOR_CASEWORKER_REVIEW` |
+| Mark Ready / readiness event | `SUMMARY_READY` |
 
 A case is **STUCK** when `NOW() - updated_at > SLA threshold` for its current status.
 
