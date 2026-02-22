@@ -305,6 +305,7 @@ The following are left for product/architecture decisions; the checklist does no
 2. **Strands Agents SDK:** v1.2 states “optionally via Strands Agents SDK or equivalent.” Whether “equivalent” includes any Bedrock AgentCore-compatible runtime is an implementation choice.
 3. **Manual replay mechanism:** v1.2 says the system MAY support replay and lists examples; which mechanism(s) to implement is a project decision.
 4. **Stage SLA threshold values:** v1.2 requires that thresholds be defined and published but does not specify numeric values; those are operational/contract decisions.
+5. **Single-step vs two-step Summary→Ready transition:** §5.4 table shows tool #4 ("Case summary & recommendation") transitioning directly to `READY_FOR_CASEWORKER_REVIEW`. However, §5.9.1 lists `SUMMARY_READY` as a valid non-terminal status, and §5.9.2 lists "Recommendation/Summary" and "Mark Ready / readiness event emission" as separate SLA stages — implying a possible intermediate `SUMMARY_READY` status and a distinct "Mark Ready" step. Whether the implementation uses a single-step or two-step transition (with `SUMMARY_READY` as an intermediate status) is not resolved by v1.2 and should be agreed separately.
 
 ---
 
@@ -332,8 +333,6 @@ The following are left for product/architecture decisions; the checklist does no
 ### A.1 Purpose and Scope
 
 This runbook covers operational detection, diagnosis, and recovery of cases that stop progressing through the FastStart AI processing pipeline. It applies to the stages between `INTAKE_VALIDATED` and `READY_FOR_CASEWORKER_REVIEW` -- the window where Bedrock AgentCore orchestrates deterministic tool execution. (§5.4, §5.9)
-
-**Out of scope:** Caseworker portal UI issues, Cognito/SSO problems, policy authoring errors, upstream intake failures before `POST /applications/complete`.
 
 ---
 
