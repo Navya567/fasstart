@@ -1,0 +1,72 @@
+%% AI-Powered Government Case Triage Platform Workflow (AgentCore-first)
+%% Source: agentcore-requirements-full-v1.2.md
+%% ORCHESTRATION = Bedrock AgentCore (no Step Functions)
+
+flowchart LR
+    subgraph CITIZEN["CITIZEN PORTAL"]
+        U1[Citizen Submits Application]
+        U2[Uploads Documents]
+    end
+
+    subgraph INTAKE["INTAKE APIs"]
+        GW[API Gateway Intake]
+        L1[ApplicationInit Lambda]
+        S3UP[S3 Raw Document Upload\nPresigned URLs]
+        L2[ApplicationFinalize Lambda]
+    end
+
+    subgraph ORCH["ORCHESTRATION"]
+        EB[EventBridge\nApp Finalized Event]
+        AC[Bedrock AgentCore\nCase Assessment Agent]
+        T1[Document Validation Tool]
+        T2[Data Extraction Tool]
+        T3[Policy Evaluation Tool]
+        T4[Case Summary Tool]
+    end
+
+    subgraph AI["AI SERVICES"]
+        TEX[Textract OCR]
+        BRC[Bedrock AgentCore\nClaude]
+    end
+
+    subgraph PORTAL["CASEWORKER PORTAL"]
+        CF[CloudFront + Cognito]
+        UI[React/TypeScript\nCaseworker Portal]
+        ACT[Case Decision Actions\nApprove, Decline, Escalate, Request Info]
+    end
+
+    subgraph DATA["DATA STORES"]
+        DB1[(Aurora/DynamoDB\nCreate Case)]
+        DB2[(Aurora/DynamoDB\nUpdates & READY_FOR_CASEWORKER_REVIEW)]
+    end
+
+    subgraph NOTIF["AUDIT & NOTIFICATIONS"]
+        EVT[EventBridge Notifications]
+        SVC[Email SES / SMS SNS / Webhook]
+    end
+
+    U1 --> GW
+    GW --> L1
+    L1 --> DB1
+    L1 --> S3UP
+    U2 --> S3UP
+    L2 --> S3UP
+    L2 --> DB1
+    L2 --> EB
+
+    EB --> AC
+    AC --> T1
+    T1 --> T2
+    T2 --> TEX
+    T2 --> BRC
+    T2 --> T3
+    T3 --> T4
+    T1 & T2 & T3 & T4 --> DB2
+
+    DB2 --> CF
+    CF --> UI
+    UI --> ACT
+    ACT --> DB2
+    ACT --> EVT
+    DB2 --> EVT
+    EVT --> SVC

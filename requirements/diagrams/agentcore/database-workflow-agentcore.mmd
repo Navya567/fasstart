@@ -1,0 +1,74 @@
+%% FastStart AgentCore-first: Database flow
+%% Source: agentcore-requirements-full-v1.2.md §6.4, §7
+%% Aurora = system of record; DynamoDB = runtime only
+%% AgentCore + Tools (not Step Functions + workers)
+
+flowchart TB
+    subgraph AURORA["Aurora PostgreSQL (Relational Storage)"]
+        subgraph G1["GROUP 1: Organisation"]
+            ORG[organisations\nPK: organisation_id]
+            CT[case_types\nFK: organisation_id]
+        end
+        subgraph G2["GROUP 2: Policy"]
+            POL[policies\nFK: org, case_type]
+            POLDOC[policy_documents]
+            POLEXT[policy_extraction_fields]
+            POLRUL[policy_rules]
+            POLFAIR[policy_fairness_constraints]
+        end
+        subgraph G3["GROUP 3: Case"]
+            CASES[cases\nFK: org, case_type, policy]
+            CASEDOC[case_documents\nFK: case_id]
+            EXTDATA[extracted_case_data\nFK: case_id]
+        end
+        subgraph G4["GROUP 4: Agent"]
+            AGENT_EX[agent_executions\nFK: case_id]
+            RULE_EVAL[rule_evaluations\nFK: case_id, rule_id]
+        end
+        subgraph G5["GROUP 5: Decision"]
+            CASE_DEC[case_decisions\nFK: case_id]
+            AUDIT[audit_logs\nimmutable]
+        end
+    end
+
+    subgraph DDB["DynamoDB (NoSQL – Runtime Only)"]
+        RUNTIME[case_runtime_state\nPK: case_id\norgId, caseType, policyVersion,\ncurrent_stage, status, lock_owner]
+    end
+
+    subgraph S3["S3 Buckets (Object Storage)"]
+        B1[applicant-intake\norg/case-type/case-id/documents]
+        B2[policy-definition-bucket]
+        B3[case-packs]
+        B4[logs]
+    end
+
+    AppInit[ApplicationInit Lambda] --> CASES
+    AppFinal[ApplicationFinalize Lambda] --> RUNTIME
+    AppFinal --> CASEDOC
+    AgentCore[AgentCore + Tools] --> AGENT_EX
+    AgentCore --> RULE_EVAL
+    AgentCore --> EXTDATA
+    AgentCore --> CASEDOC
+    AgentCore --> RUNTIME
+    AgentCore --> B1
+    Caseworker[Caseworker decision] --> CASE_DEC
+    Caseworker --> AUDIT
+    Caseworker --> RUNTIME
+    GetDec[GetDecision Lambda] --> CASE_DEC
+    RetLambda[Retention Lambda] --> B4
+
+    ORG --> CT
+    ORG --> POL
+    CT --> POL
+    POL --> POLDOC
+    POL --> POLEXT
+    POL --> POLRUL
+    POL --> POLFAIR
+    ORG --> CASES
+    CT --> CASES
+    POL --> CASES
+    CASES --> CASEDOC
+    CASES --> EXTDATA
+    CASES --> AGENT_EX
+    CASES --> RULE_EVAL
+    CASES --> CASE_DEC

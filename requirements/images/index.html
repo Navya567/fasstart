@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FastStart AgentCore-first Architecture Diagrams</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 1rem; background: #f5f5f5; }
+    h1 { color: #333; }
+    h2 { color: #555; margin-top: 2rem; border-bottom: 1px solid #ccc; padding-bottom: 0.25rem; }
+    .diagram { background: white; padding: 1.5rem; margin: 1rem 0; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow-x: auto; }
+    .mermaid { display: flex; justify-content: center; }
+    .note { font-size: 0.875rem; color: #666; margin-top: 0.5rem; }
+  </style>
+</head>
+<body>
+  <h1>FastStart AgentCore-first Architecture Diagrams</h1>
+  <p>Source: <code>requirements/agentcore-requirements-full-v1.2.md</code>. Orchestration = Bedrock AgentCore (no Step Functions).</p>
+
+  <h2>1. Conceptual Workflow</h2>
+  <div class="diagram">
+    <pre class="mermaid">
+flowchart LR
+    subgraph EXT["Citizen Portal (upstream)"]
+        A[Citizen Submits Application]
+    end
+    subgraph INTAKE["Document Ingestion"]
+        B[API Gateway Intake]
+        C[Lambda ApplicationInit]
+        D[Lambda ApplicationFinalize]
+    end
+    subgraph STORAGE["Storage"]
+        S3[(S3 Raw Documents)]
+    end
+    subgraph TRIGGER["Event-Driven Trigger"]
+        EB[EventBridge CASE_INTAKE_VALIDATED]
+    end
+    subgraph ORCH["AI Orchestration (AgentCore)"]
+        AC[Bedrock AgentCore Case Assessment Agent]
+        T1[Tool: Document Validation]
+        T2[Tool: Data Extraction]
+        T3[Tool: Policy Evaluation]
+        T4[Tool: Case Summary]
+    end
+    subgraph DATA["Data Stores"]
+        AUR[(Aurora PostgreSQL)]
+        DDB[(DynamoDB)]
+    end
+    subgraph REVIEW["Caseworker Review"]
+        CP[Caseworker Portal]
+        DEC[Approve / Decline / Escalate]
+    end
+    A --> B
+    B --> C
+    C --> S3
+    C --> AUR
+    C --> DDB
+    S3 --> D
+    D --> AUR
+    D --> DDB
+    D --> EB
+    EB --> AC
+    AC --> T1
+    T1 --> T2
+    T2 --> T3
+    T3 --> T4
+    T1 & T2 & T3 & T4 --> AUR
+    T1 & T2 & T3 & T4 --> DDB
+    T4 --> CP
+    AUR --> CP
+    CP --> DEC
+    DEC --> AUR
+    </pre>
+    <p class="note">Intake → EventBridge → AgentCore sequences tools → Aurora/DynamoDB → Caseworker Portal.</p>
+  </div>
+
+  <h2>2. Detailed Workflow (Swimlane-style)</h2>
+  <div class="diagram">
+    <pre class="mermaid">
+flowchart TB
+    subgraph CITIZEN["Citizen Portal"]
+        C1[Citizen Submits Application]
+        C2[Uploads Documents]
+    end
+    subgraph INTAKE["Intake APIs"]
+        I1[API Gateway Intake]
+        I2[Lambda ApplicationInit]
+        I3[S3 Raw Document Upload]
+        I4[Lambda ApplicationFinalize]
+    end
+    subgraph ORCH["Orchestration (AgentCore)"]
+        E1[EventBridge CASE_INTAKE_VALIDATED]
+        E2[Bedrock AgentCore Case Assessment Agent]
+        E3[Validation → Extraction → Eval → Summary]
+    end
+    subgraph AI["AI Services / Deterministic Tools"]
+        A1[Document Validation Tool]
+        A2[Data Extraction Tool + Textract]
+        A3[Policy Evaluation Tool]
+        A4[Case Summary Tool]
+    end
+    subgraph DS["Data Stores"]
+        D1[(Aurora / DynamoDB)]
+        D2[(Aurora / DynamoDB READY_FOR_CASEWORKER_REVIEW)]
+        D3[(S3)]
+    end
+    subgraph PORTAL["Caseworker Portal"]
+        P1[CloudFront + Cognito]
+        P2[React/TypeScript Portal]
+        P3[Approve, Decline, Escalate]
+    end
+    subgraph AUDIT["Audit & Notifications"]
+        N1[EventBridge Notifications]
+        N2[SES / SNS / Webhook]
+    end
+    C1 --> I1
+    I1 --> I2
+    I2 --> D1
+    I2 --> I3
+    C2 --> I3
+    I4 --> D1
+    I4 --> E1
+    E1 --> E2
+    E2 --> E3
+    E3 --> A1
+    A1 --> A2
+    A2 --> A3
+    A3 --> A4
+    A1 & A2 & A3 & A4 --> D2
+    D2 --> P1
+    P1 --> P2
+    P2 --> P3
+    P3 --> D2
+    P3 --> N1
+    D2 --> N1
+    N1 --> N2
+    </pre>
+    <p class="note">AgentCore selects and invokes tools; tools update Aurora and DynamoDB.</p>
+  </div>
+
+  <h2>3. AWS Architecture (3 Layers)</h2>
+  <div class="diagram">
+    <pre class="mermaid">
+flowchart TB
+    subgraph EXTERNAL["EXTERNAL"]
+        Citizen[Citizen Portal]
+        CW[Caseworker Browser]
+    end
+    subgraph FRONT["Frontend"]
+        CF[CloudFront + Amplify]
+    end
+    subgraph API_ORCH["API & ORCHESTRATION"]
+        APIGW[API Gateway]
+        COG[Cognito SSO]
+        EB[EventBridge Bus]
+        AC[Bedrock AgentCore]
+    end
+    subgraph LAMBDA_DETAIL["Lambda Group"]
+        AppInit[ApplicationInit]
+        AppFinal[ApplicationFinalize]
+        GetDec[GetDecision]
+        Tools[Tool Layer]
+        CWAPI[Caseworker APIs]
+    end
+    subgraph DATA_AI["DATA & AI"]
+        AUR[(Aurora PostgreSQL)]
+        DDB[(DynamoDB case_runtime_state)]
+        S3_APP[(S3 applicant-intake)]
+        S3_POL[(S3 policy-definition)]
+        S3_PACK[(S3 case-packs)]
+        BEDROCK[Bedrock Agent Core]
+        TEXTRACT[Textract]
+    end
+    Citizen --> CF
+    CF --> APIGW
+    CW --> APIGW
+    CW --> CWAPI
+    COG --> APIGW
+    APIGW --> AppInit
+    APIGW --> AppFinal
+    APIGW --> GetDec
+    AppInit --> AUR
+    AppFinal --> AUR
+    AppFinal --> DDB
+    AppFinal --> EB
+    GetDec --> AUR
+    EB --> AC
+    AC --> Tools
+    Tools --> BEDROCK
+    Tools --> TEXTRACT
+    Tools --> AUR
+    Tools --> DDB
+    Tools --> S3_APP
+    AUR --> CWAPI
+    DDB --> CWAPI
+    BEDROCK --> AUR
+    </pre>
+    <p class="note">No Step Functions. EventBridge starts AgentCore; Tools = deterministic execution layer.</p>
+  </div>
+
+  <h2>4. Database Workflow</h2>
+  <div class="diagram">
+    <pre class="mermaid">
+flowchart TB
+    subgraph AURORA["Aurora PostgreSQL"]
+        subgraph G1["Organisation"]
+            ORG[organisations]
+            CT[case_types]
+        end
+        subgraph G2["Policy"]
+            POL[policies]
+            POLDOC[policy_documents]
+            POLEXT[policy_extraction_fields]
+            POLRUL[policy_rules]
+            POLFAIR[policy_fairness_constraints]
+        end
+        subgraph G3["Case"]
+            CASES[cases]
+            CASEDOC[case_documents]
+            EXTDATA[extracted_case_data]
+        end
+        subgraph G4["Agent"]
+            AGENT_EX[agent_executions]
+            RULE_EVAL[rule_evaluations]
+        end
+        subgraph G5["Decision"]
+            CASE_DEC[case_decisions]
+            AUDIT[audit_logs immutable]
+        end
+    end
+    subgraph DDB["DynamoDB"]
+        RUNTIME[case_runtime_state]
+    end
+    subgraph S3["S3 Buckets"]
+        B1[applicant-intake]
+        B2[policy-definition]
+        B3[case-packs]
+        B4[logs]
+    end
+    AppInit[ApplicationInit Lambda] --> CASES
+    AppFinal[ApplicationFinalize Lambda] --> RUNTIME
+    AppFinal --> CASEDOC
+    AgentCore[AgentCore + Tools] --> AGENT_EX
+    AgentCore --> RULE_EVAL
+    AgentCore --> EXTDATA
+    AgentCore --> RUNTIME
+    AgentCore --> B1
+    Caseworker[Caseworker decision] --> CASE_DEC
+    Caseworker --> AUDIT
+    Caseworker --> RUNTIME
+    GetDec[GetDecision Lambda] --> CASE_DEC
+    RetLambda[Retention Lambda] --> B4
+    ORG --> CT
+    POL --> POLDOC
+    POL --> POLEXT
+    POL --> POLRUL
+    CASES --> CASEDOC
+    CASES --> EXTDATA
+    CASES --> AGENT_EX
+    CASES --> RULE_EVAL
+    CASES --> CASE_DEC
+    </pre>
+    <p class="note">Aurora = system of record; DynamoDB = runtime orchestration state only.</p>
+  </div>
+
+  <h2>5. Government Case Triage Workflow (AgentCore)</h2>
+  <div class="diagram">
+    <pre class="mermaid">
+flowchart LR
+    subgraph CITIZEN["CITIZEN PORTAL"]
+        U1[Citizen Submits Application]
+        U2[Uploads Documents]
+    end
+    subgraph INTAKE["INTAKE APIs"]
+        GW[API Gateway]
+        L1[ApplicationInit Lambda]
+        S3UP[S3 Presigned Upload]
+        L2[ApplicationFinalize Lambda]
+    end
+    subgraph ORCH["ORCHESTRATION"]
+        EB[EventBridge]
+        AC[Bedrock AgentCore]
+        T1[Document Validation]
+        T2[Data Extraction]
+        T3[Policy Evaluation]
+        T4[Case Summary]
+    end
+    subgraph AI["AI SERVICES"]
+        TEX[Textract OCR]
+        BRC[Bedrock Claude]
+    end
+    subgraph PORTAL["CASEWORKER PORTAL"]
+        CF[CloudFront + Cognito]
+        UI[React/TypeScript Portal]
+        ACT[Approve, Decline, Escalate]
+    end
+    subgraph DATA["DATA STORES"]
+        DB1[(Aurora/DynamoDB Create Case)]
+        DB2[(Aurora/DynamoDB READY_FOR_REVIEW)]
+    end
+    subgraph NOTIF["AUDIT & NOTIFICATIONS"]
+        EVT[EventBridge]
+        SVC[SES / SNS / Webhook]
+    end
+    U1 --> GW
+    GW --> L1
+    L1 --> DB1
+    L1 --> S3UP
+    U2 --> S3UP
+    L2 --> EB
+    L2 --> DB1
+    EB --> AC
+    AC --> T1 --> T2 --> T3 --> T4
+    T2 --> TEX
+    T2 --> BRC
+    T1 & T2 & T3 & T4 --> DB2
+    DB2 --> CF
+    CF --> UI
+    UI --> ACT
+    ACT --> DB2
+    ACT --> EVT
+    EVT --> SVC
+    </pre>
+    <p class="note">ORCHESTRATION = Bedrock AgentCore (no Step Functions workflow).</p>
+  </div>
+
+  <script>
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral', flowchart: { useMaxWidth: true, htmlLabels: true } });
+  </script>
+</body>
+</html>

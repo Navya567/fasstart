@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FastStartAI - Admin Flows HLD</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+        :root {
+            --bg:        #0a0e1a;
+            --bg2:       #0f1628;
+            --bg3:       #141d35;
+            --panel:     #1a2340;
+            --border:    #2a3a5c;
+            --border2:   #3a4f7a;
+            --text:      #e2e8f0;
+            --muted:     #7a8bb0;
+            --blue:      #3b82f6;
+            --blue2:     #60a5fa;
+            --cyan:      #06b6d4;
+            --green:     #10b981;
+            --green2:    #34d399;
+            --orange:    #f59e0b;
+            --orange2:   #fbbf24;
+            --purple:    #8b5cf6;
+            --purple2:   #a78bfa;
+            --red:       #ef4444;
+            --red2:      #f87171;
+            --teal:      #14b8a6;
+            --pink:      #ec4899;
+            --indigo:    #6366f1;
+            --aws-orange: #ff9900;
+            --aws-dark:  #232f3e;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'IBM Plex Sans', sans-serif;
+            font-size: 13px;
+            line-height: 1.4;
+            min-width: 1400px;
+            padding: 0;
+        }
+
+        .container {
+            max-width: 100%;
+            margin: 0 auto;
+        }
+
+        /* ── HEADER ── */
+        .doc-header {
+            background: linear-gradient(135deg, #0a0e1a 0%, #1a2340 50%, #0a1628 100%);
+            border-bottom: 2px solid var(--blue);
+            padding: 28px 48px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: relative;
+            overflow: hidden;
+        }
+        .doc-header::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: repeating-linear-gradient(90deg, transparent, transparent 80px, rgba(59,130,246,0.03) 80px, rgba(59,130,246,0.03) 81px),
+                        repeating-linear-gradient(0deg,  transparent, transparent 80px, rgba(59,130,246,0.03) 80px, rgba(59,130,246,0.03) 81px);
+        }
+        .header-left { position: relative; }
+        .header-eyebrow {
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            color: var(--blue);
+            margin-bottom: 6px;
+        }
+        .header-title {
+            font-size: 26px;
+            font-weight: 700;
+            color: #fff;
+            line-height: 1.2;
+        }
+        .header-title span { color: var(--blue2); }
+        .header-sub {
+            font-size: 13px;
+            color: var(--muted);
+            margin-top: 6px;
+        }
+        .header-right {
+            display: flex;
+            gap: 12px;
+            position: relative;
+        }
+        .badge {
+            padding: 5px 12px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            border: 1px solid;
+        }
+        .badge-blue   { background: rgba(59,130,246,0.15);  color: var(--blue2);   border-color: rgba(59,130,246,0.4); }
+        .badge-green  { background: rgba(16,185,129,0.15);  color: var(--green2);  border-color: rgba(16,185,129,0.4); }
+        .badge-orange { background: rgba(245,158,11,0.15);  color: var(--orange2); border-color: rgba(245,158,11,0.4); }
+        .badge-cyan   { background: rgba(6,182,212,0.15);   color: var(--cyan);    border-color: rgba(6,182,212,0.4); }
+
+        /* ── CANVAS ── */
+        .canvas {
+            padding: 32px 40px;
+        }
+
+        /* ── ROLE SECTION ── */
+        .role-section {
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            margin-bottom: 24px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .role-section.caseworker { border-color: rgba(6,182,212,0.4); }
+        .role-section.manager { border-color: rgba(245,158,11,0.4); }
+        .role-section.admin { border-color: rgba(16,185,129,0.4); }
+
+        .role-header {
+            padding: 16px 24px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .role-section.caseworker .role-header { background: rgba(6,182,212,0.08); }
+        .role-section.manager .role-header { background: rgba(245,158,11,0.08); }
+        .role-section.admin .role-header { background: rgba(16,185,129,0.08); }
+
+        .role-icon {
+            font-size: 32px;
+            flex-shrink: 0;
+        }
+
+        .role-section.caseworker .role-icon { filter: drop-shadow(0 0 8px rgba(6,182,212,0.5)); }
+        .role-section.manager .role-icon { filter: drop-shadow(0 0 8px rgba(245,158,11,0.5)); }
+        .role-section.admin .role-icon { filter: drop-shadow(0 0 8px rgba(16,185,129,0.5)); }
+
+        .role-title h2 {
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+
+        .role-section.caseworker h2 { color: var(--cyan); }
+        .role-section.manager h2 { color: var(--orange2); }
+        .role-section.admin h2 { color: var(--green2); }
+
+        .role-title p {
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        .role-body {
+            padding: 20px 24px;
+        }
+
+        /* ── FLOW DIAGRAM ── */
+        .flow-diagram {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 18px 20px;
+            margin-bottom: 16px;
+            border-left-width: 3px;
+        }
+
+        .role-section.caseworker .flow-diagram { border-left-color: var(--cyan); }
+        .role-section.manager .flow-diagram { border-left-color: var(--orange); }
+        .role-section.admin .flow-diagram { border-left-color: var(--green); }
+
+        .flow-header {
+            margin-bottom: 16px;
+        }
+
+        .flow-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 4px;
+        }
+
+        .flow-subtitle {
+            font-size: 10px;
+            color: var(--muted);
+        }
+
+        /* ── FLOW PATH ── */
+        .flow-path {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin: 16px 0;
+        }
+
+        .flow-node {
+            padding: 12px 16px;
+            border-radius: 6px;
+            border: 1px solid;
+            background: var(--bg3);
+            min-width: 140px;
+            max-width: 200px;
+            text-align: center;
+            position: relative;
+            transition: border-color 0.2s, transform 0.2s;
+        }
+
+        .flow-node:hover {
+            transform: translateY(-2px);
+        }
+
+        .flow-node.frontend {
+            border-color: rgba(6,182,212,0.4);
+            background: rgba(6,182,212,0.06);
+        }
+
+        .flow-node.api {
+            border-color: rgba(59,130,246,0.4);
+            background: rgba(59,130,246,0.06);
+        }
+
+        .flow-node.lambda {
+            border-color: rgba(245,158,11,0.4);
+            background: rgba(245,158,11,0.06);
+        }
+
+        .flow-node.ai {
+            border-color: rgba(139,92,246,0.4);
+            background: rgba(139,92,246,0.06);
+        }
+
+        .flow-node.database {
+            border-color: rgba(16,185,129,0.4);
+            background: rgba(16,185,129,0.06);
+        }
+
+        .flow-node-label {
+            font-size: 8.5px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            margin-bottom: 6px;
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        .flow-node.frontend .flow-node-label { color: var(--cyan); }
+        .flow-node.api .flow-node-label { color: var(--blue2); }
+        .flow-node.lambda .flow-node-label { color: var(--orange2); }
+        .flow-node.ai .flow-node-label { color: var(--purple2); }
+        .flow-node.database .flow-node-label { color: var(--green2); }
+
+        .flow-node-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 4px;
+            line-height: 1.3;
+        }
+
+        .flow-node-detail {
+            font-size: 9px;
+            color: var(--muted);
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        .flow-arrow {
+            color: var(--blue2);
+            font-size: 18px;
+            flex-shrink: 0;
+            animation: pulse-arrow 2s infinite;
+        }
+
+        @keyframes pulse-arrow {
+            0%, 100% { opacity: 0.4; }
+            50% { opacity: 1; }
+        }
+
+        /* ── SUB-FLOW ── */
+        .sub-flow {
+            background: var(--bg3);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 14px 16px;
+            margin-top: 12px;
+        }
+
+        .sub-flow-title {
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--blue2);
+            margin-bottom: 10px;
+            letter-spacing: 0.5px;
+        }
+
+        .sub-flow-steps {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .sub-step {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 8px 10px;
+            background: rgba(59,130,246,0.04);
+            border-radius: 4px;
+        }
+
+        .sub-step-num {
+            background: linear-gradient(135deg, var(--blue) 0%, var(--blue2) 100%);
+            color: #fff;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 9px;
+            font-weight: 700;
+            flex-shrink: 0;
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        .sub-step-text {
+            color: var(--text);
+            font-size: 10px;
+            line-height: 1.5;
+        }
+
+        /* ── SERVICE BADGE ── */
+        .service-badge-inline {
+            display: inline-block;
+            padding: 2px 6px;
+            background: rgba(59,130,246,0.15);
+            border: 1px solid rgba(59,130,246,0.3);
+            border-radius: 3px;
+            font-size: 8.5px;
+            font-weight: 600;
+            color: var(--blue2);
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        /* ── TECH STACK ── */
+        .tech-stack {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 24px;
+            margin-top: 32px;
+        }
+
+        .tech-stack h3 {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--blue2);
+            text-align: center;
+            margin-bottom: 20px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .tech-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+        }
+
+        .tech-item {
+            background: var(--bg3);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 14px;
+        }
+
+        .tech-label {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+            color: var(--blue2);
+        }
+
+        .tech-item div:not(.tech-label) {
+            font-size: 10px;
+            color: var(--muted);
+            line-height: 1.8;
+            padding-left: 12px;
+            position: relative;
+        }
+
+        .tech-item div:not(.tech-label)::before {
+            content: '•';
+            position: absolute;
+            left: 0;
+            color: var(--blue);
+        }
+
+        /* ── FOOTER ── */
+        .footer {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px 24px;
+            margin-top: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .footer-left div:first-child {
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 3px;
+        }
+
+        .footer-left div:last-child {
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        .footer-right {
+            display: flex;
+            gap: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- HEADER -->
+        <div class="doc-header">
+            <div class="header-left">
+                <div class="header-eyebrow">AWS SERVERLESS ARCHITECTURE</div>
+                <div class="header-title">FastStartAI <span>Admin Flows</span></div>
+                <div class="header-sub">Complete Integration Flows | System Configuration & User Management Workflows</div>
+            </div>
+            <div class="header-right">
+                <div class="badge badge-green">ADMIN</div>
+                <div class="badge badge-blue">AWS CLOUD</div>
+                <div class="badge badge-orange">FEB 2026</div>
+            </div>
+        </div>
+
+        <!-- CANVAS -->
+        <div class="canvas">
+
+        <!-- ADMIN FLOWS -->
+        <div class="role-section admin">
+            <div class="role-header">
+                <div class="role-icon">⚙️</div>
+                <div class="role-title">
+                    <h2>Admin User Flows</h2>
+                    <p>System configuration and user management workflows</p>
+                </div>
+            </div>
+            <div class="role-body">
+
+            <!-- Flow: Login -->
+            <div class="flow-diagram">
+                <div class="flow-header">
+                    <div class="flow-title">🔐 1. User Login Flow</div>
+                    <div class="flow-subtitle">SSO authentication with role-based access</div>
+                </div>
+                <div class="flow-path">
+                    <div class="flow-node frontend">
+                        <div class="flow-node-label">UI</div>
+                        <div class="flow-node-title">Login Page</div>
+                        <div class="flow-node-detail">User clicks SSO</div>
+                    </div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-node api">
+                        <div class="flow-node-label">AUTH</div>
+                        <div class="flow-node-title">Cognito</div>
+                        <div class="flow-node-detail">/oauth2/authorize</div>
+                    </div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-node api">
+                        <div class="flow-node-label">PROVIDER</div>
+                        <div class="flow-node-title">Azure AD / Okta</div>
+                        <div class="flow-node-detail">SAML/OIDC Auth</div>
+                    </div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-node api">
+                        <div class="flow-node-label">TOKEN</div>
+                        <div class="flow-node-title">JWT Issued</div>
+                        <div class="flow-node-detail">Access + ID Tokens</div>
+                    </div>
+                </div>
+                <div class="sub-flow">
+                    <div class="sub-flow-title">⚙️ Backend Process:</div>
+                    <div class="sub-flow-steps">
+                        <div class="sub-step">
+                            <div class="sub-step-num">1</div>
+                            <div class="sub-step-text">Cognito validates SAML assertion from IdP</div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">2</div>
+                            <div class="sub-step-text">User pool checks for existing account or creates new user</div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">3</div>
+                            <div class="sub-step-text">JWT tokens generated with <span class="service-badge-inline">cognito:groups</span> claims (caseworker/manager/admin)</div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">4</div>
+                            <div class="sub-step-text">Frontend stores tokens in localStorage and redirects to dashboard</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Flow: Dashboard -->
+            <div class="flow-diagram">
+                <div class="flow-header">
+                    <div class="flow-title">📊 2. Dashboard Flow</div>
+                    <div class="flow-subtitle">System-wide metrics, user stats, and policy monitoring</div>
+                </div>
+                <div class="flow-path">
+                    <div class="flow-node frontend">
+                        <div class="flow-node-label">UI</div>
+                        <div class="flow-node-title">Dashboard Page</div>
+                        <div class="flow-node-detail">Admin overview</div>
+                    </div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-node api">
+                        <div class="flow-node-label">GATEWAY</div>
+                        <div class="flow-node-title">API Gateway</div>
+                        <div class="flow-node-detail">GET /admin/dashboard</div>
+                    </div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-node lambda">
+                        <div class="flow-node-label">COMPUTE</div>
+                        <div class="flow-node-title">DashboardLambda</div>
+                        <div class="flow-node-detail">Aggregate metrics</div>
+                    </div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-node database">
+                        <div class="flow-node-label">DATA</div>
+                        <div class="flow-node-title">Aurora + CloudWatch</div>
+                        <div class="flow-node-detail">Query stats</div>
+                    </div>
+                </div>
+                <div class="sub-flow">
+                    <div class="sub-flow-title">⚙️ Backend Process:</div>
+                    <div class="sub-flow-steps">
+                        <div class="sub-step">
+                            <div class="sub-step-num">1</div>
+                            <div class="sub-step-text">Lambda queries <span class="service-badge-inline">Aurora</span>: Total cases, approval rates, avg processing time</div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">2</div>
+                            <div class="sub-step-text">User stats: COUNT users by role (total_users, caseworkers, managers, admins)</div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">3</div>
+                            <div class="sub-step-text">Recent activity: Last 10 audit log entries (user actions, policy updates, case decisions)</div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">4</div>
+                            <div class="sub-step-text">CloudWatch metrics: Lambda errors, API latency, system health indicators</div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">5</div>
+                            <div class="sub-step-text">Frontend renders dashboard with charts, KPIs, and real-time alerts</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Flow: Manage Users -->
+            <div class="flow-diagram">
+                <div class="flow-header">
+                    <div class="flow-title">👥 3. User Management Flow</div>
+                    <div class="flow-subtitle">Create and manage system users with SSO integration</div>
+                </div>
+                <div class="flow-path">
+                    <div class="flow-node frontend">
+                        <div class="flow-node-label">UI</div>
+                        <div class="flow-node-title">Admin Panel</div>
+                        <div class="flow-node-detail">User list + Create</div>
+                    </div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-node api">
+                        <div class="flow-node-label">GATEWAY</div>
+                        <div class="flow-node-title">API Gateway</div>
+                        <div class="flow-node-detail">/admin/users</div>
+                    </div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-node lambda">
+                        <div class="flow-node-label">COMPUTE</div>
+                        <div class="flow-node-title">UserManagementLambda</div>
+                        <div class="flow-node-detail">RBAC enforced</div>
+                    </div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-node api">
+                        <div class="flow-node-label">AUTH</div>
+                        <div class="flow-node-title">Cognito + Aurora</div>
+                        <div class="flow-node-detail">SSO account</div>
+                    </div>
+                </div>
+                <div class="sub-flow">
+                    <div class="sub-flow-title">⚙️ Create User Process:</div>
+                    <div class="sub-flow-steps">
+                        <div class="sub-step">
+                            <div class="sub-step-num">1</div>
+                            <div class="sub-step-text">Lambda Authorizer checks JWT for 'admin' group (403 if unauthorized)</div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">2</div>
+                            <div class="sub-step-text">Add user to Cognito group via SSO provider: <span class="service-badge-inline">caseworker | manager | admin</span></div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">3</div>
+                            <div class="sub-step-text">Insert user record into <span class="service-badge-inline">Aurora users</span> table with role metadata</div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">4</div>
+                            <div class="sub-step-text">Audit log records user creation action by admin</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="sub-flow">
+                    <div class="sub-flow-title">📋 List Users:</div>
+                    <div class="sub-flow-steps">
+                        <div class="sub-step">
+                            <div class="sub-step-num">1</div>
+                            <div class="sub-step-text">Query <span class="service-badge-inline">Aurora</span>: SELECT * FROM users WHERE is_deleted=false ORDER BY created_at DESC</div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">2</div>
+                            <div class="sub-step-text">Display table with: Name, Email, Role, Status (Active/Inactive), Last Login</div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">3</div>
+                            <div class="sub-step-text">Basic stats panel: Total Users: {count}, Caseworkers: {cw_count}, Managers: {mgr_count}, Admins: {adm_count}</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="sub-flow">
+                    <div class="sub-flow-title">✏️ Update / Delete / Activate / Deactivate User:</div>
+                    <div class="sub-flow-steps">
+                        <div class="sub-step">
+                            <div class="sub-step-num">1</div>
+                            <div class="sub-step-text"><strong>Update:</strong> PATCH /admin/users/{id} → Update name, email, role in Aurora</div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">2</div>
+                            <div class="sub-step-text"><strong>Delete:</strong> DELETE /admin/users/{id} → Soft delete: SET is_deleted=true, deleted_at=NOW()</div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">3</div>
+                            <div class="sub-step-text"><strong>Activate:</strong> PUT /admin/users/{id}/activate → SET is_active=true, update Cognito user status</div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">4</div>
+                            <div class="sub-step-text"><strong>Deactivate:</strong> PUT /admin/users/{id}/deactivate → SET is_active=false, revoke Cognito sessions</div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">5</div>
+                            <div class="sub-step-text">All operations logged in Aurora audit_logs table with admin_id and action type</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Flow: Policy Configuration -->
+            <div class="flow-diagram">
+                <div class="flow-header">
+                    <div class="flow-title">📋 4. Policy Configuration Flow</div>
+                    <div class="flow-subtitle">Upload and manage decision policies (Aurora-only storage)</div>
+                </div>
+                <div class="flow-path">
+                    <div class="flow-node frontend">
+                        <div class="flow-node-label">UI</div>
+                        <div class="flow-node-title">Policy Upload</div>
+                        <div class="flow-node-detail">JSON/YAML file</div>
+                    </div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-node api">
+                        <div class="flow-node-label">GATEWAY</div>
+                        <div class="flow-node-title">API Gateway</div>
+                        <div class="flow-node-detail">/admin/policies</div>
+                    </div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-node lambda">
+                        <div class="flow-node-label">COMPUTE</div>
+                        <div class="flow-node-title">PolicyManagementLambda</div>
+                        <div class="flow-node-detail">Validate schema</div>
+                    </div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-node database">
+                        <div class="flow-node-label">DATA</div>
+                        <div class="flow-node-title">Aurora</div>
+                        <div class="flow-node-detail">Versioned storage</div>
+                    </div>
+                </div>
+                <div class="sub-flow">
+                    <div class="sub-flow-title">⚙️ Upload Policy Process:</div>
+                    <div class="sub-flow-steps">
+                        <div class="sub-step">
+                            <div class="sub-step-num">1</div>
+                            <div class="sub-step-text">Lambda validates policy file against JSON schema (decision rules, thresholds, benefit types)</div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">2</div>
+                            <div class="sub-step-text">Insert policy into <span class="service-badge-inline">Aurora policy_versions</span> table with content and version timestamp</div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">3</div>
+                            <div class="sub-step-text">Audit log records policy upload with admin_id and policy_name</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="sub-flow">
+                    <div class="sub-flow-title">📋 List / Download / Update / Delete Policies:</div>
+                    <div class="sub-flow-steps">
+                        <div class="sub-step">
+                            <div class="sub-step-num">1</div>
+                            <div class="sub-step-text"><strong>List:</strong> GET /admin/policies → Query Aurora policy_versions, display table with name, version, updated_at</div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">2</div>
+                            <div class="sub-step-text"><strong>Download:</strong> GET /admin/policies/{id}/download → Retrieve policy JSON from Aurora, return as downloadable file</div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">3</div>
+                            <div class="sub-step-text"><strong>Update:</strong> PUT /admin/policies/{id} → Validate new policy, increment version, INSERT new row in Aurora</div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">4</div>
+                            <div class="sub-step-text"><strong>Delete:</strong> DELETE /admin/policies/{id} → Soft delete: SET is_deleted=true WHERE policy_id={id}</div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">5</div>
+                            <div class="sub-step-text">All operations logged in Aurora audit_logs with full change tracking</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Flow: Notifications Page -->
+            <div class="flow-diagram">
+                <div class="flow-header">
+                    <div class="flow-title">🔔 5. Notifications Page Flow</div>
+                    <div class="flow-subtitle">View system notifications, mark as read, filter by type</div>
+                </div>
+                <div class="flow-path">
+                    <div class="flow-node frontend">
+                        <div class="flow-node-label">UI</div>
+                        <div class="flow-node-title">Notifications Icon</div>
+                        <div class="flow-node-detail">Bell badge counter</div>
+                    </div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-node api">
+                        <div class="flow-node-label">GATEWAY</div>
+                        <div class="flow-node-title">API Gateway</div>
+                        <div class="flow-node-detail">GET /notifications</div>
+                    </div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-node lambda">
+                        <div class="flow-node-label">COMPUTE</div>
+                        <div class="flow-node-title">NotificationsLambda</div>
+                        <div class="flow-node-detail">Query + format</div>
+                    </div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-node database">
+                        <div class="flow-node-label">DATA</div>
+                        <div class="flow-node-title">DynamoDB</div>
+                        <div class="flow-node-detail">notifications table</div>
+                    </div>
+                </div>
+                <div class="sub-flow">
+                    <div class="sub-flow-title">⚙️ Backend Process:</div>
+                    <div class="sub-flow-steps">
+                        <div class="sub-step">
+                            <div class="sub-step-num">1</div>
+                            <div class="sub-step-text">Lambda queries <span class="service-badge-inline">DynamoDB</span>: WHERE user_id=current_user ORDER BY timestamp DESC LIMIT 50</div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">2</div>
+                            <div class="sub-step-text">Notifications grouped by type: SYSTEM_UPDATE</div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">3</div>
+                            <div class="sub-step-text">Frontend displays list with read/unread indicators, timestamps, and action links</div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">4</div>
+                            <div class="sub-step-text">When user clicks notification → Lambda updates: SET is_read=true WHERE notification_id=id</div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">5</div>
+                            <div class="sub-step-text">Filter controls: All / Unread / System Updates</div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">6</div>
+                            <div class="sub-step-text">Badge counter updated in real-time via WebSocket connection for new notifications</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Flow: Settings & Profile Photo Upload -->
+            <div class="flow-diagram">
+                <div class="flow-header">
+                    <div class="flow-title">⚙️ 6. Settings & Profile Photo Upload Flow</div>
+                    <div class="flow-subtitle">Update user preferences and upload profile photo</div>
+                </div>
+                <div class="flow-path">
+                    <div class="flow-node frontend">
+                        <div class="flow-node-label">UI</div>
+                        <div class="flow-node-title">Settings Page</div>
+                        <div class="flow-node-detail">Photo upload input</div>
+                    </div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-node api">
+                        <div class="flow-node-label">GATEWAY</div>
+                        <div class="flow-node-title">API Gateway</div>
+                        <div class="flow-node-detail">POST /upload</div>
+                    </div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-node lambda">
+                        <div class="flow-node-label">COMPUTE</div>
+                        <div class="flow-node-title">UploadLambda</div>
+                        <div class="flow-node-detail">Validate & upload</div>
+                    </div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-node storage">
+                        <div class="flow-node-label">STORAGE</div>
+                        <div class="flow-node-title">S3</div>
+                        <div class="flow-node-detail">user-profiles bucket</div>
+                    </div>
+                </div>
+                <div class="sub-flow">
+                    <div class="sub-flow-title">⚙️ Backend Process:</div>
+                    <div class="sub-flow-steps">
+                        <div class="sub-step">
+                            <div class="sub-step-num">1</div>
+                            <div class="sub-step-text">User uploads photo (JPG/PNG, max 5MB) → Frontend base64 encodes image</div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">2</div>
+                            <div class="sub-step-text">Lambda validates file type, size, and scans for malware using S3 Object Lambda</div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">3</div>
+                            <div class="sub-step-text">Image uploaded to <span class="service-badge-inline">S3</span>: s3://user-profiles/{user_id}/profile.jpg</div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">4</div>
+                            <div class="sub-step-text">Generate CloudFront signed URL for secure photo access with 24hr expiration</div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">5</div>
+                            <div class="sub-step-text">Update <span class="service-badge-inline">Aurora users</span> table: SET profile_photo_url=cloudfront_url, updated_at=NOW()</div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">6</div>
+                            <div class="sub-step-text">Lambda returns success response with new photo URL → Frontend updates UI immediately</div>
+                        </div>
+                        <div class="sub-step">
+                            <div class="sub-step-num">7</div>
+                            <div class="sub-step-text">Old photo automatically deleted from S3 using lifecycle policy (if exists)</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            </div>
+        </div>
+
+    </div>
+    <!-- End Canvas -->
+
+    <!-- Tech Stack Section -->
+    <div class="tech-stack">
+        <h3>Technology Stack</h3>
+        <div class="tech-grid">
+            <div class="tech-item">
+                <div class="tech-label">Frontend</div>
+                <div>React 18 + TypeScript</div>
+                <div>Next.js 14 (SSG/ISR)</div>
+                <div>CloudFront + S3</div>
+                <div>WebSocket client</div>
+            </div>
+            <div class="tech-item">
+                <div class="tech-label">Compute & Orchestration</div>
+                <div>Lambda (Node.js 20.x)</div>
+                <div>Step Functions</div>
+                <div>EventBridge</div>
+                <div>SQS queues</div>
+            </div>
+            <div class="tech-item">
+                <div class="tech-label">Data & AI</div>
+                <div>Aurora PostgreSQL</div>
+                <div>DynamoDB</div>
+                <div>S3 + KMS encryption</div>
+                <div>Bedrock (Claude 3.5 Sonnet)</div>
+            </div>
+            <div class="tech-item">
+                <div class="tech-label">Auth & Gateway</div>
+                <div>Cognito User Pools</div>
+                <div>API Gateway (REST + WebSocket)</div>
+                <div>Lambda Authorizer (RBAC)</div>
+                <div>JWT validation</div>
+            </div>
+            <div class="tech-item">
+                <div class="tech-label">AI Services</div>
+                <div>Bedrock AgentCore</div>
+                <div>Textract (OCR)</div>
+                <div>Comprehend (NLP)</div>
+                <div>Knowledge Bases</div>
+            </div>
+            <div class="tech-item">
+                <div class="tech-label">Monitoring & Ops</div>
+                <div>CloudWatch Logs/Metrics</div>
+                <div>X-Ray distributed tracing</div>
+                <div>CloudTrail audit logs</div>
+                <div>SES email delivery</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+        <div class="footer-left">
+            <div style="font-weight:600;color:var(--text);margin-bottom:3px;">FastStartAI Admin Flows HLD v1.0</div>
+            <div>Amazon Web Services · Serverless Architecture · February 2026</div>
+        </div>
+        <div class="footer-right">
+            <div class="badge badge-green">ADMIN</div>
+            <div class="badge badge-blue">AWS CLOUD</div>
+            <div class="badge badge-cyan">SECURE</div>
+        </div>
+    </div>
+
+</div>
+</body>
+</html>

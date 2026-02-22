@@ -1,0 +1,72 @@
+%% FastStart AgentCore-first: Detailed Workflow (swimlane-style)
+%% Source: agentcore-requirements-full-v1.2.md §5
+%% Orchestration = Bedrock AgentCore (no Step Functions)
+
+flowchart TB
+    subgraph CITIZEN["Citizen Portal"]
+        C1[Citizen Submits Application]
+        C2[Uploads Documents]
+    end
+
+    subgraph INTAKE["Intake APIs"]
+        I1[API Gateway Intake]
+        I2[Lambda ApplicationInit]
+        I3[S3 Raw Document Upload\nPresigned URLs]
+        I4[Lambda ApplicationFinalize]
+    end
+
+    subgraph ORCH["Orchestration (AgentCore)"]
+        E1[EventBridge\nCASE_INTAKE_VALIDATED]
+        E2[Bedrock AgentCore\nCase Assessment Agent]
+        E3[Selects & invokes tools\nValidation → Extraction → Eval → Summary]
+    end
+
+    subgraph AI["AI Services / Deterministic Tools"]
+        A1[Document Validation Tool]
+        A2[Data Extraction Tool\n+ Textract OCR]
+        A3[Policy Evaluation Tool]
+        A4[Case Summary & Recommendation Tool\nBedrock Claude]
+    end
+
+    subgraph DS["Data Stores"]
+        D1[(Aurora / DynamoDB\nCreate Case)]
+        D2[(Aurora / DynamoDB\nUpdates & READY_FOR_CASEWORKER_REVIEW)]
+        D3[(S3 Bucket)]
+    end
+
+    subgraph PORTAL["Caseworker Portal"]
+        P1[CloudFront + Cognito]
+        P2[React/TypeScript Caseworker Portal]
+        P3[Case Decision Actions\nApprove, Decline, Escalate, Request Info]
+    end
+
+    subgraph AUDIT["Audit & Notifications"]
+        N1[EventBridge Notifications]
+        N2[Email SES / SMS SNS / Webhook]
+    end
+
+    C1 --> I1
+    I1 --> I2
+    I2 --> D1
+    I2 --> I3
+    C2 --> I3
+    I3 --> D3
+    I4 --> I3
+    I4 --> D1
+    I4 --> E1
+
+    E1 --> E2
+    E2 --> E3
+    E3 --> A1
+    A1 --> A2
+    A2 --> A3
+    A3 --> A4
+    A1 & A2 & A3 & A4 --> D2
+
+    D2 --> P1
+    P1 --> P2
+    P2 --> P3
+    P3 --> D2
+    P3 --> N1
+    D2 --> N1
+    N1 --> N2

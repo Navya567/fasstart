@@ -1,0 +1,77 @@
+%% FastStart AgentCore-first: AWS Architecture (3 layers)
+%% Source: agentcore-requirements-full-v1.2.md §5, §9
+%% EXTERNAL | API & ORCHESTRATION | DATA & AI
+%% No Step Functions; Bedrock AgentCore = AI sequencer
+
+flowchart TB
+    subgraph EXTERNAL["EXTERNAL"]
+        Citizen[Citizen Portal upstream]
+        CW[Caseworker Browser]
+    end
+
+    subgraph FRONT["Frontend"]
+        CF[CloudFront + Amplify]
+    end
+
+    subgraph API_ORCH["API & ORCHESTRATION"]
+        APIGW[API Gateway\nintake, complete, decision]
+        COG[Cognito SSO]
+        LAMBDA[Lambda Group]
+        EB[EventBridge Bus]
+        AC[Bedrock AgentCore\nCase Assessment Agent]
+    end
+
+    subgraph LAMBDA_DETAIL["Lambda Group"]
+        AppInit[ApplicationInit]
+        AppFinal[ApplicationFinalize]
+        GetDec[GetDecision]
+        Tools[Tool Layer\nValidation, Extraction, Eval, Summary]
+        CWAPI[Caseworker APIs]
+    end
+
+    subgraph DATA_AI["DATA & AI"]
+        AUR[(Aurora PostgreSQL Cluster)]
+        DDB[(DynamoDB\ncase_runtime_state)]
+        S3_APP[(S3 applicant-intake)]
+        S3_POL[(S3 policy-definition)]
+        S3_PACK[(S3 case-packs)]
+        S3_LOG[(S3 logs)]
+        BEDROCK[Bedrock Agent Core]
+        TEXTRACT[Textract]
+    end
+
+    subgraph OPS["Recovery / Ops"]
+        SQS[SQS + DLQs]
+        RET[5-Year Retention Lambda]
+    end
+
+    Citizen --> CF
+    CF --> APIGW
+    CW --> APIGW
+    CW --> CWAPI
+    COG --> APIGW
+    APIGW --> AppInit
+    APIGW --> AppFinal
+    APIGW --> GetDec
+    AppInit --> AUR
+    AppFinal --> AUR
+    AppFinal --> DDB
+    AppFinal --> EB
+    GetDec --> AUR
+
+    EB --> AC
+    AC --> Tools
+    Tools --> BEDROCK
+    Tools --> TEXTRACT
+    Tools --> AUR
+    Tools --> DDB
+    Tools --> S3_APP
+
+    AUR --> Tools
+    AUR --> CWAPI
+    DDB --> Tools
+    DDB --> CWAPI
+    S3_APP --> Tools
+    BEDROCK --> AUR
+    EB --> RET
+    RET --> S3_LOG

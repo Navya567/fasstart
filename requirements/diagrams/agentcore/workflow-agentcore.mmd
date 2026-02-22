@@ -1,0 +1,61 @@
+%% FastStart AgentCore-first: Conceptual Workflow
+%% Source: agentcore-requirements-full-v1.2.md §5.1
+%% No Step Functions; EventBridge → Bedrock AgentCore
+
+flowchart LR
+    subgraph EXT["Citizen Portal (upstream)"]
+        A[Citizen Submits Application]
+    end
+
+    subgraph INTAKE["Document Ingestion"]
+        B[API Gateway Intake]
+        C[Lambda ApplicationInit]
+        D[Lambda ApplicationFinalize]
+    end
+
+    subgraph STORAGE["Storage"]
+        S3[(S3 Raw Documents)]
+    end
+
+    subgraph TRIGGER["Event-Driven Trigger"]
+        EB[EventBridge\nCASE_INTAKE_VALIDATED]
+    end
+
+    subgraph ORCH["AI Orchestration (AgentCore)"]
+        AC[Bedrock AgentCore\nCase Assessment Agent]
+        T1[Tool: Document Validation]
+        T2[Tool: Data Extraction]
+        T3[Tool: Policy Evaluation]
+        T4[Tool: Case Summary & Recommendation]
+    end
+
+    subgraph DATA["Data Stores"]
+        AUR[(Aurora PostgreSQL)]
+        DDB[(DynamoDB\ncase_runtime_state)]
+    end
+
+    subgraph REVIEW["Caseworker Review"]
+        CP[Caseworker Portal\nCloudFront + Cognito]
+        DEC[Approve / Decline / Escalate]
+    end
+
+    A --> B
+    B --> C
+    C --> S3
+    C --> AUR
+    C --> DDB
+    S3 --> D
+    D --> AUR
+    D --> DDB
+    D --> EB
+    EB --> AC
+    AC --> T1
+    T1 --> T2
+    T2 --> T3
+    T3 --> T4
+    T1 & T2 & T3 & T4 --> AUR
+    T1 & T2 & T3 & T4 --> DDB
+    T4 --> CP
+    AUR --> CP
+    CP --> DEC
+    DEC --> AUR
