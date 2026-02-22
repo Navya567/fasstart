@@ -149,7 +149,9 @@ The platform is built as a **cloud-native, event-driven, serverless** architectu
 | 6 | Decision publication / retrieval | GET /applications/{caseId}/decision → GetDecisionLambda → Aurora → JSON |
 
 ![Conceptual workflow](images/workflow.png)
+
 ![Conceptual workflow (detail)](images/workflow-2.png)
+
 ![Conceptual workflow (detail)](images/government-triage-workflow-agentcore.png)
 
 
@@ -686,7 +688,9 @@ Modular, cloud-native, event-driven design on AWS.
 
 ## 9. Infrastructure Architecture
 ![AWS architecture](images/architecture.png)
+
 ![AWS architecture](images/aws-architecture.png)
+
 ![AWS architecture (detail)](images/complete-architecture.png)
 
 - **IAC** – Terraform; CI/CD for all components needed
