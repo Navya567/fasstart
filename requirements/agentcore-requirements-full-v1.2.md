@@ -143,7 +143,7 @@ The platform is built as a **cloud-native, event-driven, serverless** architectu
 |------|------|-------------|
 | 1 | Document ingestion | API-driven intake (init → S3 upload → complete) → EventBridge |
 | 2 | Event-driven trigger | EventBridge emits CASE_INTAKE_VALIDATED → AI orchestration |
-| 3 | Policy-governed AI orchestration | Agent Core: validation → extraction → policy evaluation → case summary |
+| 3 | Policy-governed AI orchestration | Agent Core: validation → extraction → policy evaluation → case summary → mark ready |
 | 4 | Caseworker review & human decision | Portal: view case, AI output, then Approve / Decline / Escalate |
 | 5 | Policy customisation & runtime usage | YAML/JSON policies → S3 → validation → Aurora → agents read from DB |
 | 6 | Decision publication / retrieval | GET /applications/{caseId}/decision → GetDecisionLambda → Aurora → JSON |
@@ -273,7 +273,8 @@ The platform is built as a **cloud-native, event-driven, serverless** architectu
 | 1. Document validation | Validate technical correctness | S3 docs, policy | Valid/invalid, metadata | DOCS_TECHNICALLY_VALIDATED |
 | 2. Data extraction | Extract structured fields | Validated docs, policy | JSON fields, confidence | DATA_EXTRACTED |
 | 3. Policy evaluation | Check rules, eligibility | Extracted data, policy | Rule results, explanations | POLICY_VALIDATED |
-| 4. Case summary & recommendation | Synthesise case summary | All prior outputs | Human-readable summary + recommendation | READY_FOR_CASEWORKER_REVIEW |
+| 4. Case summary & recommendation | Synthesise case summary | All prior outputs | Human-readable summary + recommendation | SUMMARY_READY |
+| 5. Mark ready for review | Release workflow lock, emit readiness event | Summary outputs, case state | Lock released, CASE_AI_READY_FOR_REVIEW emitted (idempotent) | READY_FOR_CASEWORKER_REVIEW |
 
 **Failure handling:**
 

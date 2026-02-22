@@ -154,10 +154,11 @@ Implementation MUST use Bedrock AgentCore for AI sequencing and MUST NOT use Ste
 | **1. Document validation** | Validate technical correctness | S3 docs, policy | Valid/invalid, metadata | DOCS_TECHNICALLY_VALIDATED | §5.4 table |
 | **2. Data extraction** | Extract structured fields | Validated docs, policy | JSON fields, confidence | DATA_EXTRACTED | §5.4 table |
 | **3. Policy evaluation** | Check rules, eligibility | Extracted data, policy | Rule results, explanations | POLICY_VALIDATED | §5.4 table |
-| **4. Case summary & recommendation** | Synthesise case summary | All prior outputs | Human-readable summary + recommendation | READY_FOR_CASEWORKER_REVIEW | §5.4 table |
+| **4. Case summary & recommendation** | Synthesise case summary | All prior outputs | Human-readable summary + recommendation | SUMMARY_READY | §5.4 table |
+| **5. Mark ready for review** | Release workflow lock, emit readiness event | Summary outputs, case state | Lock released, CASE_AI_READY_FOR_REVIEW emitted (idempotent) | READY_FOR_CASEWORKER_REVIEW | §5.4 table |
 
-**Readiness responsibilities:**
-The step that transitions a case to `READY_FOR_CASEWORKER_REVIEW` MUST also (a) release any workflow lock, and (b) emit `CASE_AI_READY_FOR_REVIEW` **idempotently**. If implemented as a separate step/tool, it MUST be explicitly implemented and tested. Ref: §5.4, §5.8, §5.9.6
+**Readiness responsibilities (tool #5):**
+Tool #5 ("Mark ready for review") transitions a case from `SUMMARY_READY` to `READY_FOR_CASEWORKER_REVIEW` and MUST (a) release any workflow lock, and (b) emit `CASE_AI_READY_FOR_REVIEW` **idempotently**. This is an explicit, separately testable tool in the pipeline. Ref: §5.4, §5.8, §5.9.6
 
 ### 4.4 AI Services
 
@@ -333,8 +334,6 @@ The following are left for product/architecture decisions; the checklist does no
 
 This runbook covers operational detection, diagnosis, and recovery of cases that stop progressing through the FastStart AI processing pipeline. It applies to the stages between `INTAKE_VALIDATED` and `READY_FOR_CASEWORKER_REVIEW` -- the window where Bedrock AgentCore orchestrates deterministic tool execution. (§5.4, §5.9)
 
-**Out of scope:** Caseworker portal UI issues, Cognito/SSO problems, policy authoring errors, upstream intake failures before `POST /applications/complete`.
-
 ---
 
 ### A.2 Key Concepts
@@ -366,7 +365,7 @@ Published thresholds (time-to-progress) must exist for each stage:
 | Data Extraction | `DOCS_TECHNICALLY_VALIDATED` |
 | Policy Evaluation | `DATA_EXTRACTED` |
 | Recommendation/Summary | `POLICY_VALIDATED` |
-| Mark Ready / readiness event | transition to `READY_FOR_CASEWORKER_REVIEW` |
+| Mark Ready / readiness event | `SUMMARY_READY` |
 
 A case is **STUCK** when `NOW() - updated_at > SLA threshold` for its current status.
 
