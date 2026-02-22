@@ -30,6 +30,10 @@ Implementation MUST provide the following screens and capabilities. Reference: *
 
 **Stack & deployment:** React 18 + TypeScript, Next.js 14 (SSG/ISR); AWS Amplify (hosting, APIs, auth); Amazon Cognito (SSO, role-based access for Caseworkers, Managers, Administrators). **§6.2** (Stack, Deployment, Access).
 
+### UI ↔ Backend Parity
+
+Every user-visible field (case status, AI analysis, notes, risk assessment, documents, actions) MUST be backed by an API response field and a durable persisted record (Aurora as source of truth). DynamoDB may cache runtime pointers/snapshots but must not be the sole source of truth for UI-visible AI analysis. No UI-only derived state is allowed unless explicitly documented. Ref: §6.2, §6.3, §6.4
+
 ---
 
 ## 2. Backend API Checklist (Endpoint-by-Endpoint Parity)
@@ -152,6 +156,9 @@ Implementation MUST use Bedrock AgentCore for AI sequencing and MUST NOT use Ste
 | **3. Policy evaluation** | Check rules, eligibility | Extracted data, policy | Rule results, explanations | POLICY_VALIDATED | §5.4 table |
 | **4. Case summary & recommendation** | Synthesise case summary | All prior outputs | Human-readable summary + recommendation | READY_FOR_CASEWORKER_REVIEW | §5.4 table |
 
+**Readiness responsibilities:**
+The step that transitions a case to `READY_FOR_CASEWORKER_REVIEW` MUST also (a) release any workflow lock, and (b) emit `CASE_AI_READY_FOR_REVIEW` **idempotently**. If implemented as a separate step/tool, it MUST be explicitly implemented and tested. Ref: §5.4, §5.8, §5.9.6
+
 ### 4.4 AI Services
 
 | Item | Requirement | v1.2 ref |
@@ -164,7 +171,7 @@ Implementation MUST use Bedrock AgentCore for AI sequencing and MUST NOT use Ste
 |------|-------------|----------|
 | **Agent/tool failures** | Each agent/tool handles failures explicitly; stops or flags for review. | §5.4 Failure handling |
 | **Partial outputs** | Partial outputs preserved. | §5.4 Failure handling |
-| **Resumability** | Workflow resumable (checkpoints in DynamoDB). | §5.4 Failure handling |
+| **Resumability** | Workflow resumable from last successful **Aurora status checkpoint**; DynamoDB provides runtime lock/attempt state only. | §5.8, §6.4, §5.9.6 |
 
 ---
 
