@@ -423,6 +423,8 @@ The **Citizen Portal / Upstream system** polls for the decision.
 4. Resume from last successful checkpoint
 5. All failures observable and auditable
 
+**Terminal statuses:** `APPROVED` and `DECLINED` are terminal case statuses for workflow progression. No AI-stage or caseworker-stage transitions are permitted after a case reaches a terminal status unless a future version explicitly introduces a controlled reopen process.
+
 **Recovery services**
 
 - SQS + DLQs (retry isolation)
@@ -885,6 +887,8 @@ All EventBridge events emitted by the system MUST conform to a versioned JSON Sc
 
 See Appendix H for JSON Schema definitions.
 
+**Event-specific extension fields:** In addition to the common mandatory fields above, certain event types MAY define additional required fields in their event-specific schemas. For example, `CASE_AI_READY_FOR_REVIEW` requires `summaryId` (see Appendix H.2).
+
 ### 12.2 Decision: Case Assignment Mode + Access Rules
 
 **Status:** CLOSED — supersedes §11.2.
@@ -1057,6 +1061,8 @@ Internal notification emails via SES are supported as an **optional secondary ch
 }
 ```
 
+**HTTP status mapping for business blocks:** Where a request is syntactically valid but cannot proceed due to business-rule or policy validation conditions (for example missing mandatory documents during intake finalisation), the API SHOULD return HTTP `422 Unprocessable Entity` with `error.code = "BUSINESS_BLOCKED"`.
+
 **Idempotency:** Mutation endpoints that accept an optional `Idempotency-Key` header SHOULD return the same response for duplicate requests within a 24-hour window.
 
 **Org authorisation:** All case-related endpoints MUST verify that the authenticated user's organisation matches the case's `org_id`. Cross-org access is restricted to Administrator role.
@@ -1135,6 +1141,12 @@ Internal notification emails via SES are supported as an **optional secondary ch
 
 ## Appendix C: AI Orchestration — State Transitions, Locks, Tool Contracts
 
+### C.0 Canonical Case Status Enum (Normative)
+
+The following case status values are the canonical workflow statuses and MUST be used consistently across Aurora records, DynamoDB runtime state, APIs, EventBridge events, and UI state handling:
+
+`INITIATED`, `INTAKE_VALIDATED`, `DOCS_TECHNICALLY_VALIDATED`, `DATA_EXTRACTED`, `POLICY_VALIDATED`, `SUMMARY_READY`, `READY_FOR_CASEWORKER_REVIEW`, `PENDING`, `ESCALATED`, `APPROVED`, `DECLINED`, `BLOCKED`.
+
 ### C.1 State Transition Matrix
 
 | Current status | Valid next status | Triggered by | Invalid transitions (reject/no-op) |
@@ -1154,7 +1166,7 @@ Internal notification emails via SES are supported as an **optional secondary ch
 
 1. EventBridge delivers `CASE_INTAKE_VALIDATED` → SQS → Lambda consumer invokes AgentCore session.
 2. AgentCore reads `case_runtime_state` from DynamoDB to determine current stage and lock state.
-3. AgentCore acquires lock: conditional DynamoDB write (`lock_owner = sessionId WHERE lock_owner IS NULL OR lock_expired`). Failure → abort (another session owns the case).
+3. AgentCore acquires lock: conditional DynamoDB write (`lock_owner = sessionId WHERE lock_owner IS NULL OR lock_expiry`). Failure → abort (another session owns the case).
 4. AgentCore sequences tools 1→5, each tool reading Aurora status before acting (idempotency guard).
 5. Each tool: acquire → execute → write `agent_executions` → update Aurora status → update DynamoDB stage → release per-tool checkpoint.
 6. Tool #5 additionally emits `CASE_AI_READY_FOR_REVIEW` and releases the workflow lock.
@@ -1530,7 +1542,7 @@ All alarms defined in §5.9.5 and Appendix E.9 MUST have a documented owner (tea
   "title": "CASE_AI_READY_FOR_REVIEW",
   "description": "Emitted by Tool #5 when the case is ready for caseworker review.",
   "type": "object",
-  "required": ["caseId", "correlationId", "orgId", "policyVersion", "stage", "timestamp", "schemaVersion"],
+  "required": ["caseId", "correlationId", "orgId", "policyVersion", "stage", "timestamp", "schemaVersion", "summaryId"],
   "properties": {
     "caseId": { "type": "string", "minLength": 1 },
     "correlationId": { "type": "string", "format": "uuid" },
@@ -1539,7 +1551,7 @@ All alarms defined in §5.9.5 and Appendix E.9 MUST have a documented owner (tea
     "stage": { "type": "string", "const": "READY_FOR_CASEWORKER_REVIEW" },
     "timestamp": { "type": "string", "format": "date-time" },
     "schemaVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
-    "summaryId": { "type": "string", "description": "Reference to case_ai_summaries record" }
+    "summaryId": { "type": "string", "minLength": 1, "description": "Reference to case_ai_summaries record" }
   },
   "additionalProperties": false
 }
