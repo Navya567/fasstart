@@ -1,7 +1,7 @@
 # FastStart – AgentCore-Driven Case Assessment System  
 ## Technical Specification – Architecture, Data, and Design (AgentCore-first)
 
-**Version:** 1.2  
+**Version:** 1.2.1  
 **Last updated:** February 2026
 
 
@@ -269,7 +269,7 @@ The platform is built as a **cloud-native, event-driven, serverless** architectu
 - EventBridge rule filters by detail-type → starts AI orchestration (Bedrock AgentCore)
 - Loose coupling, fan-out, observability
 
-**Minimum event `detail` payload:** The `detail` object MUST contain at minimum `caseId` (required for orchestration to identify the case) and a `correlationId` (required per §5.9.3 and §5.9.5 for end-to-end traceability). Additional fields (`orgId`, `policyVersion`, `stage`) are RECOMMENDED in the event payload to avoid redundant lookups. See *Ambiguities / Open Questions* for the full proposed contract.
+**Minimum event `detail` payload:** The `detail` object MUST contain the mandatory fields defined in **§12.1** (EventBridge Event Schema decision): `caseId`, `correlationId`, `orgId`, `policyVersion`, `stage`, `timestamp`, and `schemaVersion`. See **Appendix H** for JSON Schema definitions.
 
 ---
 
@@ -692,7 +692,7 @@ Modular, cloud-native, event-driven design on AWS.
 
 | Table | Primary key | Required attributes |
 |-------|-------------|---------------------|
-| **cases** | case_id (String) | organisation_id (FK), case_type_id (FK), policy_id (FK), policy_version, submission_type, applicant_reference, assigned_to (nullable, FK to user identifier), status, created_at, intake_completed_at |
+| **cases** | case_id (String) | organisation_id (FK), case_type_id (FK), policy_id (FK), policy_version, submission_type, applicant_reference, assigned_to (nullable, FK to user identifier), status, created_at, updated_at, intake_completed_at |
 | **case_documents** | case_document_id (String) | case_id (FK), document_type, s3_object_path, version, upload_timestamp |
 | **extracted_case_data** | extracted_data_id (String) | case_id (FK), field_name, value, confidence_score |
 
@@ -717,7 +717,7 @@ Modular, cloud-native, event-driven design on AWS.
 
 | Table | Primary key | Required attributes |
 |-------|-------------|---------------------|
-| **case_runtime_state** | case_id (String) | orgId, caseType, policyVersion, applicationVersion, current_stage (intake/validation/agent/review), status, lock_owner, updated_at, created_at |
+| **case_runtime_state** | case_id (String) | orgId, caseType, policyVersion, applicationVersion, current_stage (intake/validation/agent/review), status, lock_owner, lock_expiry, attempt_count, last_tool_executed, updated_at, created_at |
 | **user_notifications** | notification_id (String) | user_id (String), case_id (optional), notification_type, message, status (unread/read), created_at |
 | **notification_preferences** | user_id (String) | preferences (map of notification_type → enabled/disabled), updated_at |
 
@@ -975,7 +975,7 @@ Internal notification emails via SES are supported as an **optional secondary ch
 - **Eligible types:** CASE_ASSIGNED, ESCALATION_RECEIVED, CASE_DECISION_REQUIRED. Other types are in-app only.
 - **Audit:** Each email sent writes `audit_logs` entry with action=`INTERNAL_EMAIL_SENT`.
 - **Non-blocking delivery:** SES send is asynchronous. Failure MUST NOT fail the primary business action. Failures MUST be logged and monitored.
-- **Optional tracking table:** `notification_email_deliveries` (Aurora) MAY track delivery status. See Appendix E for DDL.
+- **Optional tracking table:** `notification_email_deliveries` (Aurora) MAY track delivery status. See Appendix D.2 for DDL.
 
 ---
 
