@@ -816,38 +816,735 @@ Decision bundles (generated after human decision) MUST follow the same lifecycle
 
 ## 11. Ambiguities / Open Questions
 
-The following items were identified during compliance gap analysis. They are **not currently specified** in v1.2 as explicit requirements but may be needed for a fully workable end-to-end portal. They are documented here for product/architecture review — not as mandated requirements.
+Items §11.1–§11.5 have been **closed** by the v1.2.1 Decision Closure Addendum (§12). They are retained here for traceability with a CLOSED status. Remaining open items follow.
 
-### 11.1 EventBridge Full Event Contract (Gap 9 — partial)
+### 11.1 EventBridge Full Event Contract — **CLOSED**
 
-Minimum required fields are defined in §5.3 (`caseId`, `correlationId`). The full set of **additional** required fields in EventBridge `detail` payloads is not yet defined. v1.2 §5.3 shows the event structure with `"detail": { ... }` and mandates `caseId` and `correlationId` but does not enumerate further mandatory fields.
+Decided in **§12.1**. Full mandatory `detail` schema defined with versioned JSON Schema validation.
 
-> **Proposed requirement:** All EventBridge events emitted by the system (e.g., `CASE_INTAKE_VALIDATED`, `CASE_AI_READY_FOR_REVIEW`) SHOULD include the following **additional** fields in `detail` beyond the minimum: `orgId`, `policyVersion`, `stage`, `timestamp`. A contract validation test SHOULD verify that emitted events conform to a published JSON Schema.
+### 11.2 Case Assignment Rules — **CLOSED**
 
-### 11.2 Case Assignment Rules (Gap 6 — partial)
+Decided in **§12.2**. Manual assignment + concurrency-safe self-claim at launch; auto-assignment deferred.
 
-**Not specified in v1.2:** Whether case assignment is automatic (round-robin, load-based) or manual (caseworker claims / supervisor assigns) is not defined. v1.2 §6.3 references `assigned_to` and ASSIGNED/UNASSIGNED statuses but does not prescribe the assignment mechanism.
+### 11.3 ISR Revalidation Intervals — **CLOSED**
 
-> **Proposed requirement:** The system SHOULD support at minimum manual assignment (supervisor assigns case to caseworker) and self-claim (caseworker claims unassigned case). Auto-assignment MAY be supported as a configurable option. Access control MUST enforce that caseworkers can only view case details for cases assigned to them, unless their role explicitly permits broader access.
+Decided in **§12.4**. Explicit defaults per page type with environment-configurable overrides and mutation-triggered refresh.
 
-### 11.3 ISR Revalidation Intervals (Gap 13 — partial)
+### 11.4 SES Email Triggers for Notifications — **CLOSED**
 
-**Not specified in v1.2:** Specific ISR revalidation intervals per page are not defined. v1.2 §6.2 mandates Next.js 14 SSG/ISR but does not specify caching durations.
+Decided in **§12.5**. Optional secondary SES channel with org-level enablement, user preferences, and non-blocking delivery.
 
-> **Proposed requirement:** ISR revalidation intervals SHOULD be configurable per page type (e.g., case list: 30–60 seconds; homepage dashboard: 60 seconds; static pages: SSG with no revalidation). Specific values should be agreed during implementation.
+### 11.5 Risk Assessment Storage Model — **CLOSED**
 
-### 11.4 SES Email Triggers for Notifications (Gap 7 — partial)
+Decided in **§12.3**. Dedicated `case_ai_summaries` table with JSONB risk assessment; 1:1 UI parity.
 
-**Not specified in v1.2:** Whether system notifications (e.g., case assigned, escalation received) trigger SES emails in addition to in-app notifications is not explicitly defined. v1.2 §5.5 mentions "SES" in the context of optional citizen email but not for internal caseworker notifications.
+### 11.6 Strands Agents SDK (unchanged)
 
-> **Proposed requirement:** The system MAY support SES-based email notifications for caseworkers/managers (e.g., case assignment, escalation alerts). If implemented, email sending MUST respect `notification_preferences` and MUST write an `audit_logs` entry per email.
+v1.2 states "optionally via Strands Agents SDK or equivalent." Whether "equivalent" includes any Bedrock AgentCore-compatible runtime is an implementation choice.
 
-### 11.5 Risk Assessment Storage Model (Gap 5 — partial)
+### 11.7 Manual Replay Mechanism (unchanged)
 
-**Not specified in v1.2:** The AI-generated risk assessment (shown on Screen 4) is mentioned as part of the case summary (§5.4 Tool #4, §6.2 Screen 4) but its specific storage table/column in Aurora is not defined. It is expected to reside in the agent outputs stored in Aurora (§6.4).
+v1.2 says the system MAY support replay and lists examples; which mechanism(s) to implement is a project decision.
 
-> **Proposed requirement:** The AI-generated risk assessment MUST be stored in Aurora as part of the agent processing outputs (e.g., as a field in the case summary record or a dedicated `risk_assessment` column). The UI MUST display the risk assessment exactly as stored in Aurora (1:1 parity).
+### 11.8 Stage SLA Threshold Values (unchanged)
+
+v1.2 requires that thresholds be defined and published but does not specify numeric values; those are operational/contract decisions.
+
+### 11.9 AI Email API Endpoint Schema (unchanged)
+
+v1.2 defines email audit and SES requirements (§5.5) but does not specify a dedicated API endpoint schema for email drafting. Whether the email drafting uses an explicit `/email/draft` endpoint or is embedded in the decision flow is an implementation choice.
 
 ---
 
-*End of FastStart Technical Specification*
+## 12. v1.2.1 Decision Closure Addendum
+
+This addendum formally closes the five open questions from §11.1–§11.5. Each decision is **binding** for implementation. Corresponding §11 entries are superseded.
+
+### 12.1 Decision: EventBridge Event Schema
+
+**Status:** CLOSED — supersedes §11.1.
+
+All EventBridge events emitted by the system MUST conform to a versioned JSON Schema. The `detail` payload MUST contain:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `caseId` | string | MUST | Case identifier |
+| `correlationId` | string (UUID) | MUST | End-to-end traceability ID; propagated across API → EventBridge → AgentCore → logs |
+| `orgId` | string | MUST | Organisation identifier |
+| `policyVersion` | integer | MUST | Locked policy version for this case |
+| `stage` | string | MUST | Processing stage at time of emission |
+| `timestamp` | string (ISO 8601) | MUST | Event emission timestamp (UTC) |
+| `schemaVersion` | string (semver) | MUST | Schema version (e.g. `1.0.0`) |
+
+**Validation expectations:**
+
+- **Producers** MUST validate outbound events against the registered JSON Schema before emission. Validation failure MUST prevent emission and log an error with correlation ID.
+- **Consumers** MUST validate inbound events and route schema-invalid events to a dedicated DLQ with the original payload preserved.
+- **Contract tests** MUST exist in CI/CD to verify event schemas remain backward-compatible across deployments.
+- **Versioning:** Schema versions follow semver. Breaking changes increment the major version and require coordinated producer/consumer deployment.
+
+See Appendix H for JSON Schema definitions.
+
+### 12.2 Decision: Case Assignment Mode + Access Rules
+
+**Status:** CLOSED — supersedes §11.2.
+
+The system MUST support two assignment modes at launch:
+
+1. **Manual assignment** — A user with Manager or Administrator role assigns a case to a specific caseworker by setting `cases.assigned_to`.
+2. **Self-claim** — A caseworker claims an unassigned case. The claim MUST be concurrency-safe: single-winner via atomic conditional update (`UPDATE cases SET assigned_to = :userId, updated_at = NOW() WHERE case_id = :caseId AND assigned_to IS NULL`). If another user has already claimed, return HTTP **409 Conflict**.
+
+Auto-assignment is deferred (MAY be added as a future configurable option).
+
+**Role-based visibility:**
+
+| Role | Visible cases | Can assign | Can self-claim | Can unassign/reassign |
+|------|---------------|------------|----------------|-----------------------|
+| Caseworker | Own assigned + unassigned in own org | No | Yes (unassigned only) | No |
+| Manager | All cases in own org | Yes | Yes | Yes |
+| Administrator | All cases across orgs | Yes | No | Yes |
+
+**Audit:** Every assignment change MUST write an `audit_logs` entry. Self-claim uses action `CASE_CLAIMED`.
+
+### 12.3 Decision: Risk Assessment Aurora Storage
+
+**Status:** CLOSED — supersedes §11.5.
+
+A new Aurora table **`case_ai_summaries`** MUST store all AI-generated summary outputs including risk assessment.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `summary_id` | VARCHAR PK | NOT NULL, UNIQUE | UUID |
+| `case_id` | VARCHAR FK → cases | NOT NULL | Case reference |
+| `summary_text` | TEXT | NOT NULL | Human-readable AI summary |
+| `recommendation` | VARCHAR(50) | NOT NULL | AI recommendation (APPROVE / DECLINE / ESCALATE / REVIEW) |
+| `risk_assessment` | JSONB | NOT NULL | Structured risk object (see below) |
+| `confidence_score` | NUMERIC(4,3) | NOT NULL | Overall confidence 0.000–1.000 |
+| `policy_version` | INTEGER | NOT NULL | Policy version used |
+| `generated_by_tool` | VARCHAR(100) | NOT NULL | Tool name (e.g. `case_summary_recommendation`) |
+| `correlation_id` | VARCHAR | NOT NULL | Orchestration correlation ID |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Generation timestamp |
+
+**`risk_assessment` JSONB structure (minimum):**
+
+```json
+{
+  "risk_level": "HIGH",
+  "risk_factors": [
+    { "factor": "income_below_threshold", "severity": "high", "detail": "..." }
+  ],
+  "mitigations": ["Request additional documentation"]
+}
+```
+
+**Requirements:**
+
+- Written by Tool #4 (Case summary & recommendation) on successful execution.
+- Immutable once written. Pipeline re-run creates a new record; UI displays most recent by `created_at`.
+- UI MUST display risk assessment 1:1 from Aurora-backed API response. No client-side derivation.
+
+### 12.4 Decision: ISR Revalidation Defaults
+
+**Status:** CLOSED — supersedes §11.3.
+
+| Page | Rendering | Default revalidation | Notes |
+|------|-----------|---------------------|-------|
+| Login | SSG | — | Static |
+| Homepage dashboard | ISR | 60 s (env-configurable) | Aggregate stats |
+| Case management list | ISR | 30 s (env-configurable) | Balance freshness with load |
+| Individual case detail | SSR + client fetch | — | Must show latest; real-time sections via SWR |
+| Notifications | Client-side fetch | — | Polling or WebSocket for real-time |
+| Settings | SSG (shell) + client fetch | — | Preferences loaded client-side |
+| FAQ / AI Guide | SSG | — | Static content |
+| Escalated cases (Manager) | ISR | 30 s (env-configurable) | Same as case list |
+| User management (Admin) | SSR + client fetch | — | Must reflect latest state |
+| Policy management (Admin) | SSR + client fetch | — | Must reflect latest state |
+
+**Mutation-triggered refresh:** Any mutation action (decision, note, assignment, notification read, user CRUD, policy upload) MUST trigger immediate client-side refetch. The UI MUST NOT rely solely on the ISR window. Implementation SHOULD use `router.refresh()` or SWR `mutate()`.
+
+**Environment configurability:** ISR intervals MUST be configurable via environment variables (e.g. `ISR_CASE_LIST_REVALIDATE_SECONDS`). Defaults above apply when not overridden.
+
+### 12.5 Decision: Internal Notification Email Policy
+
+**Status:** CLOSED — supersedes §11.4.
+
+Internal notification emails via SES are supported as an **optional secondary channel**. In-app DynamoDB notifications remain primary.
+
+- **Org-level enablement:** Configurable per organisation (enabled/disabled).
+- **User preferences:** Users opt in/out per notification type via `notification_preferences`. Email preference MUST be independent of in-app preference.
+- **Eligible types:** CASE_ASSIGNED, ESCALATION_RECEIVED, CASE_DECISION_REQUIRED. Other types are in-app only.
+- **Audit:** Each email sent writes `audit_logs` entry with action=`INTERNAL_EMAIL_SENT`.
+- **Non-blocking delivery:** SES send is asynchronous. Failure MUST NOT fail the primary business action. Failures MUST be logged and monitored.
+- **Optional tracking table:** `notification_email_deliveries` (Aurora) MAY track delivery status. See Appendix E for DDL.
+
+---
+
+## Appendix A: Frontend Click-to-Backend Interaction Matrix
+
+**Conventions:**
+
+- All API calls carry `Authorization: Bearer <JWT>` from Cognito.
+- All API calls MUST propagate `X-Correlation-Id` header.
+- Standard error response: `{ "error": { "code": "<CATEGORY>", "message": "...", "correlationId": "..." } }`.
+- Error categories: `VALIDATION_ERROR`, `BUSINESS_BLOCKED`, `CONFLICT`, `NOT_FOUND`, `FORBIDDEN`, `INTERNAL_ERROR`.
+- RBAC enforced at both UI (hide/disable) and API (reject 403) layers.
+- CW = Caseworker, MGR = Manager, ADM = Administrator.
+
+| # | Screen | User action | Method | Endpoint | Role | Aurora write | DynamoDB write | S3 | EventBridge | Audit action | UI refresh |
+|---|--------|-------------|--------|----------|------|-------------|----------------|-----|-------------|-------------|------------|
+| 1 | Login | SSO login | — | Cognito hosted UI | Any | — | — | — | — | CloudTrail | Redirect to homepage |
+| 2 | Homepage | View dashboard | GET | `/portal/dashboard` | CW/MGR/ADM | — | — | — | — | — | ISR 60 s |
+| 3 | Case list | View cases | GET | `/portal/cases?page=&pageSize=&status=&sortBy=&sortOrder=&q=` | CW/MGR/ADM | — | — | — | — | — | ISR 30 s |
+| 4 | Case detail | View case | GET | `/portal/cases/{caseId}` | CW(own)/MGR/ADM | — | — | S3 presigned read | — | — | SSR + SWR |
+| 5 | Case detail | Add note | POST | `/portal/cases/{caseId}/notes` | CW(own)/MGR | INSERT case_notes | — | — | — | NOTE_ADDED | Refetch notes |
+| 6 | Case detail | Self-claim | POST | `/portal/cases/{caseId}/claim` | CW | UPDATE cases (atomic, 409 on conflict) | — | — | CASE_ASSIGNED | CASE_CLAIMED | Refetch case+list |
+| 7 | Case detail | Assign | POST | `/portal/cases/{caseId}/assign` | MGR/ADM | UPDATE cases.assigned_to | — | — | CASE_ASSIGNED | CASE_ASSIGNED | Refetch case |
+| 8 | Case detail | Unassign | POST | `/portal/cases/{caseId}/unassign` | MGR/ADM | UPDATE cases.assigned_to=NULL | — | — | CASE_UNASSIGNED | CASE_UNASSIGNED | Refetch case |
+| 9 | Case detail | Reassign | POST | `/portal/cases/{caseId}/reassign` | MGR/ADM | UPDATE cases.assigned_to=:new | — | — | CASE_REASSIGNED | CASE_REASSIGNED | Refetch case |
+| 10 | Case detail | Approve | POST | `/portal/cases/{caseId}/decision` | CW(own) | INSERT case_decisions; UPDATE cases.status | INSERT user_notifications | — | CASE_DECISION_MADE | DECISION_APPROVED | Refetch, redirect |
+| 11 | Case detail | Decline | POST | `/portal/cases/{caseId}/decision` | CW(own) | INSERT case_decisions; UPDATE cases.status | INSERT user_notifications | — | CASE_DECISION_MADE | DECISION_DECLINED | Refetch, redirect |
+| 12 | Case detail | Pending | POST | `/portal/cases/{caseId}/decision` | CW(own) | UPDATE cases.status=PENDING | — | — | CASE_STATUS_CHANGED | DECISION_PENDING | Refetch case |
+| 13 | Case detail | Escalate | POST | `/portal/cases/{caseId}/decision` | CW(own) | INSERT case_decisions; UPDATE cases.status=ESCALATED | INSERT user_notifications | — | CASE_ESCALATED | DECISION_ESCALATED | Refetch, redirect |
+| 14 | Case detail | Draft AI email | POST | `/portal/cases/{caseId}/email/draft` | CW(own) | — | — | — | — | — | Show draft modal |
+| 15 | Case detail | Send email | POST | `/portal/cases/{caseId}/email/send` | CW(own) | INSERT email record | — | — | CITIZEN_EMAIL_SENT | EMAIL_SENT | Close modal, refetch |
+| 16 | Notifications | List | GET | `/portal/notifications?page=&status=` | CW/MGR/ADM | — | — | — | — | — | Client fetch (poll) |
+| 17 | Notifications | Mark read | PATCH | `/portal/notifications/{id}` | CW/MGR/ADM | — | UPDATE status=read | — | — | — | Optimistic update |
+| 18 | Notifications | Mark unread | PATCH | `/portal/notifications/{id}` | CW/MGR/ADM | — | UPDATE status=unread | — | — | — | Optimistic update |
+| 19 | Settings | Update prefs | PUT | `/portal/settings/notifications` | CW/MGR/ADM | — | PUT notification_preferences | — | — | PREFERENCES_UPDATED | Optimistic |
+| 20 | Settings | Upload avatar | POST | `/portal/settings/profile/image` | CW/MGR/ADM | — | — | S3 presigned upload | — | — | Refetch profile |
+| 21 | Escalations | List | GET | `/portal/escalations?page=&status=` | MGR | — | — | — | — | — | ISR 30 s |
+| 22 | Escalations | Resolve | POST | `/portal/cases/{caseId}/decision` | MGR | INSERT case_decisions (new record); UPDATE cases.status | INSERT user_notifications | — | CASE_DECISION_MADE | MANAGER_DECISION | Refetch, redirect |
+| 23 | User mgmt | List users | GET | `/portal/admin/users` | ADM | — | — | — | — | — | SSR + client |
+| 24 | User mgmt | Create user | POST | `/portal/admin/users` | ADM | INSERT users | — | — | — | USER_CREATED | Refetch list |
+| 25 | User mgmt | Activate/deactivate | PATCH | `/portal/admin/users/{userId}` | ADM | UPDATE users.status | — | — | — | USER_ACTIVATED / USER_DEACTIVATED | Refetch list |
+| 26 | User mgmt | Soft delete | DELETE | `/portal/admin/users/{userId}` | ADM | UPDATE users.deleted_at | — | — | — | USER_DELETED | Refetch list |
+| 27 | Policy mgmt | List policies | GET | `/portal/admin/policies` | ADM | — | — | — | — | — | SSR + client |
+| 28 | Policy mgmt | Upload | POST | `/portal/admin/policies/upload` | ADM | — | — | S3 upload | POLICY_UPLOADED | POLICY_UPLOADED | Refetch (after async) |
+| 29 | Policy mgmt | Activate | POST | `/portal/admin/policies/{policyId}/activate` | ADM | UPDATE policies.status=active | — | — | POLICY_ACTIVATED | POLICY_ACTIVATED | Refetch list |
+
+**Pagination:** All list endpoints MUST support `page` (1-based), `pageSize` (default 20, max 100), `sortBy`, `sortOrder` (asc/desc). Responses include `items`, `totalCount`, `page`, `pageSize`, `hasMore`.
+
+**Optimistic vs refetch:** Notification read/unread and preference toggles use optimistic updates. All other mutations use forced refetch after API success.
+
+**Accessibility:** Timestamps displayed in user's local timezone; ISO 8601 on hover. Actor identity shown as display name. Decision history and notes in reverse chronological order; no edit/delete controls.
+
+---
+
+## Appendix B: Backend API Contracts
+
+### B.1 Common Conventions
+
+**Standard headers (all requests):**
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `Authorization` | MUST | `Bearer <JWT>` from Cognito |
+| `X-Correlation-Id` | MUST | UUID; generated by caller or frontend session |
+| `Content-Type` | MUST (mutations) | `application/json` |
+
+**Correlation ID propagation:** The `X-Correlation-Id` MUST be propagated from API Gateway → Lambda → EventBridge event `detail.correlationId` → AgentCore session → tool invocations → `agent_executions.correlation_id` → CloudWatch structured logs. Every log line MUST include `correlationId`.
+
+**Standard error response:**
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR | BUSINESS_BLOCKED | CONFLICT | NOT_FOUND | FORBIDDEN | INTERNAL_ERROR",
+    "message": "Human-readable (non-PII) description",
+    "correlationId": "uuid",
+    "details": []
+  }
+}
+```
+
+**Idempotency:** Mutation endpoints that accept an optional `Idempotency-Key` header SHOULD return the same response for duplicate requests within a 24-hour window.
+
+**Org authorisation:** All case-related endpoints MUST verify that the authenticated user's organisation matches the case's `org_id`. Cross-org access is restricted to Administrator role.
+
+### B.2 Intake APIs
+
+**POST /applications/init**
+
+| Aspect | Detail |
+|--------|--------|
+| Auth | API key or upstream system JWT; org verified |
+| Request | `{ caseId?, orgId, caseType, submissionType, applicant, documents-to-upload, submittedAt }` |
+| Response 201 | `{ caseId, policyVersion, requiredDocuments, uploadUrls }` |
+| Response 409 | Duplicate caseId in non-terminal state |
+| Idempotency | Reject duplicate NEW; UPDATE increments applicationVersion |
+| Side effects | Aurora INSERT cases; DynamoDB INSERT case_runtime_state; audit_logs CASE_INITIATED |
+| Ref | §5.2.1 |
+
+**POST /applications/complete**
+
+| Aspect | Detail |
+|--------|--------|
+| Auth | Same as init |
+| Request | `{ caseId }` |
+| Response 200 | `{ caseId, status: "INTAKE_VALIDATED" }` |
+| Response 422 | S3 validation failure (manifest, mandatory docs, version limits, lookback, MIME) |
+| Side effects | Aurora INSERT case_documents; DynamoDB status → INTAKE_VALIDATED; EventBridge CASE_INTAKE_VALIDATED; audit_logs INTAKE_COMPLETED |
+| Ref | §5.2.3 |
+
+**GET /applications/{caseId}/decision**
+
+| Aspect | Detail |
+|--------|--------|
+| Auth | Upstream system JWT; org verified |
+| Response 200 | `{ caseId, decision, reason, confidence, policyVersion, decidedAt }` |
+| Response 404 | Case not found or no decision yet |
+| Ref | §5.7 |
+
+### B.3 Portal APIs (selection of key contracts)
+
+**POST /portal/cases/{caseId}/decision**
+
+| Aspect | Detail |
+|--------|--------|
+| Auth | JWT; CW (assigned to case) or MGR (for escalation resolution) |
+| Request | `{ decision: "APPROVED|DECLINED|PENDING|ESCALATED", justification: "..." }` |
+| Response 200 | `{ decisionId, caseId, decision, decidedAt }` |
+| Response 403 | Not assigned / insufficient role |
+| Response 409 | Case not in decidable status |
+| Side effects | Aurora INSERT case_decisions + UPDATE cases.status; DynamoDB INSERT user_notifications; EventBridge CASE_DECISION_MADE; audit_logs DECISION_* |
+| Idempotency | Same decision by same user within window → return existing |
+| Ref | §5.5, §6.3 |
+
+**POST /portal/cases/{caseId}/claim**
+
+| Aspect | Detail |
+|--------|--------|
+| Auth | JWT; CW role |
+| Request | `{}` (empty body) |
+| Response 200 | `{ caseId, assignedTo }` |
+| Response 409 | Already claimed by another user |
+| Side effects | Aurora atomic UPDATE (WHERE assigned_to IS NULL); audit_logs CASE_CLAIMED |
+| Ref | §12.2 |
+
+**POST /portal/cases/{caseId}/notes**
+
+| Aspect | Detail |
+|--------|--------|
+| Auth | JWT; CW (assigned) or MGR |
+| Request | `{ noteText: "..." }` |
+| Response 201 | `{ noteId, caseId, performedBy, createdAt }` |
+| Side effects | Aurora INSERT case_notes; audit_logs NOTE_ADDED |
+| Ref | §6.3 Notes API parity |
+
+---
+
+## Appendix C: AI Orchestration — State Transitions, Locks, Tool Contracts
+
+### C.1 State Transition Matrix
+
+| Current status | Valid next status | Triggered by | Invalid transitions (reject/no-op) |
+|---------------|-------------------|--------------|-------------------------------------|
+| `INITIATED` | `INTAKE_VALIDATED` | ApplicationFinalizeLambda | Any other |
+| `INTAKE_VALIDATED` | `DOCS_TECHNICALLY_VALIDATED`, `BLOCKED` | Tool #1 | Skip to later stage |
+| `DOCS_TECHNICALLY_VALIDATED` | `DATA_EXTRACTED`, `BLOCKED` | Tool #2 | Regress to earlier stage |
+| `DATA_EXTRACTED` | `POLICY_VALIDATED`, `BLOCKED` | Tool #3 | Regress |
+| `POLICY_VALIDATED` | `SUMMARY_READY` | Tool #4 | Regress |
+| `SUMMARY_READY` | `READY_FOR_CASEWORKER_REVIEW` | Tool #5 | Regress |
+| `READY_FOR_CASEWORKER_REVIEW` | `APPROVED`, `DECLINED`, `PENDING`, `ESCALATED` | Caseworker decision | Regress to AI stages |
+| `ESCALATED` | `APPROVED`, `DECLINED` | Manager resolution | Regress |
+| `APPROVED` / `DECLINED` | — (terminal) | — | Any further transition |
+| `BLOCKED` | Previous stage (retry) | Ops replay after fix | Forward skip |
+
+### C.2 AgentCore Session Lifecycle
+
+1. EventBridge delivers `CASE_INTAKE_VALIDATED` → SQS → Lambda consumer invokes AgentCore session.
+2. AgentCore reads `case_runtime_state` from DynamoDB to determine current stage and lock state.
+3. AgentCore acquires lock: conditional DynamoDB write (`lock_owner = sessionId WHERE lock_owner IS NULL OR lock_expired`). Failure → abort (another session owns the case).
+4. AgentCore sequences tools 1→5, each tool reading Aurora status before acting (idempotency guard).
+5. Each tool: acquire → execute → write `agent_executions` → update Aurora status → update DynamoDB stage → release per-tool checkpoint.
+6. Tool #5 additionally emits `CASE_AI_READY_FOR_REVIEW` and releases the workflow lock.
+7. Session ends. All state is durable in Aurora + DynamoDB.
+
+### C.3 Lock Semantics
+
+| Aspect | Specification |
+|--------|--------------|
+| Lock store | DynamoDB `case_runtime_state.lock_owner` + `lock_expiry` |
+| Acquire | Conditional write: `lock_owner = :sessionId` WHERE `lock_owner IS NULL` OR `lock_expiry < NOW()` |
+| TTL | Lock MUST expire after configurable duration (default: 15 minutes). Lock holder MUST heartbeat (extend expiry) during long-running tools. |
+| Release | Explicit release on session completion or tool #5 success. Also released on session failure after cleanup. |
+| Stale lock | Ops MAY clear stale locks manually. Automated expiry via TTL condition prevents permanent lock. |
+
+### C.4 Retry and Failure Classification
+
+| Category | Criteria | Retry strategy | Side effects |
+|----------|----------|----------------|--------------|
+| **Infrastructure failure** | Timeout, 5xx, throttling, service error | Exponential backoff; max 3 attempts per tool | `agent_executions` records each attempt |
+| **Business blocked** | Missing doc, extraction failure, policy rule gap | No automatic retry; set status=BLOCKED | `agent_executions` with outcome=BLOCKED |
+| **Idempotent replay** | Ops-initiated re-drive | Resume from Aurora checkpoint; tool checks status before acting | Duplicate writes prevented by status guard |
+
+### C.5 Tool Execution Contract (all tools)
+
+Every tool invocation MUST:
+
+1. Read current Aurora `cases.status` to verify pre-condition.
+2. If pre-condition not met: no-op (idempotent) and return success.
+3. Execute deterministic logic (read policy from Aurora, process data).
+4. Write `agent_executions` record with all §5.9.3 fields.
+5. Update Aurora `cases.status` to the next valid status.
+6. Update DynamoDB `case_runtime_state` (stage, status, updated_at).
+7. On failure: write `agent_executions` with outcome=FAILURE and error fields; do NOT advance status.
+8. Persist partial outputs to Aurora where applicable (extracted data, rule evaluations).
+
+### C.6 Correlation ID Propagation
+
+```
+Frontend (X-Correlation-Id)
+  → API Gateway (pass-through)
+    → Lambda (log + propagate)
+      → EventBridge detail.correlationId
+        → AgentCore session context
+          → Tool invocation → agent_executions.correlation_id
+          → CloudWatch structured log field
+```
+
+Every log entry across all components MUST include `correlationId` as a structured field.
+
+---
+
+## Appendix D: Data Model Hardening, Indexing & DDL
+
+### D.1 New Table: `case_ai_summaries`
+
+```sql
+CREATE TABLE case_ai_summaries (
+    summary_id       VARCHAR(64)    PRIMARY KEY,
+    case_id          VARCHAR(64)    NOT NULL REFERENCES cases(case_id),
+    summary_text     TEXT           NOT NULL,
+    recommendation   VARCHAR(50)    NOT NULL CHECK (recommendation IN ('APPROVE','DECLINE','ESCALATE','REVIEW')),
+    risk_assessment  JSONB          NOT NULL,
+    confidence_score NUMERIC(4,3)   NOT NULL CHECK (confidence_score BETWEEN 0.000 AND 1.000),
+    policy_version   INTEGER        NOT NULL,
+    generated_by_tool VARCHAR(100)  NOT NULL,
+    correlation_id   VARCHAR(128)   NOT NULL,
+    created_at       TIMESTAMPTZ    NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_ai_summaries_case_id ON case_ai_summaries (case_id, created_at DESC);
+```
+
+### D.2 Optional Table: `notification_email_deliveries`
+
+```sql
+CREATE TABLE notification_email_deliveries (
+    delivery_id      VARCHAR(64)    PRIMARY KEY,
+    notification_id  VARCHAR(64)    NOT NULL,
+    user_id          VARCHAR(64)    NOT NULL,
+    notification_type VARCHAR(50)   NOT NULL,
+    ses_message_id   VARCHAR(128),
+    status           VARCHAR(20)    NOT NULL DEFAULT 'QUEUED'
+                     CHECK (status IN ('QUEUED','SENT','FAILED','BOUNCED')),
+    sent_at          TIMESTAMPTZ,
+    failure_reason   VARCHAR(500),
+    created_at       TIMESTAMPTZ    NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_email_deliveries_user ON notification_email_deliveries (user_id, created_at DESC);
+CREATE INDEX idx_email_deliveries_status ON notification_email_deliveries (status, created_at);
+```
+
+### D.3 Recommended Indexes for Existing Tables
+
+```sql
+-- Case assignment-based listing (§12.2)
+CREATE INDEX idx_cases_assigned_to ON cases (assigned_to, status, created_at DESC);
+CREATE INDEX idx_cases_org_status ON cases (organisation_id, status, created_at DESC);
+
+-- Decision history lookups (§5.5 escalation chain)
+CREATE INDEX idx_case_decisions_case_id ON case_decisions (case_id, decided_at DESC);
+
+-- Notes ordering (§6.3 Notes API)
+CREATE INDEX idx_case_notes_case_id ON case_notes (case_id, created_at ASC);
+
+-- Agent execution triage (§5.9.3, §5.9.4)
+CREATE INDEX idx_agent_executions_case_tool ON agent_executions (case_id, tool_started_at DESC);
+CREATE INDEX idx_agent_executions_correlation ON agent_executions (correlation_id);
+CREATE INDEX idx_agent_executions_outcome ON agent_executions (tool_outcome, tool_started_at DESC);
+```
+
+### D.4 DynamoDB: `user_notifications` GSI
+
+```
+GSI: user_notifications_by_user
+  PK: user_id
+  SK: created_at (descending)
+  Projection: ALL
+```
+
+This enables efficient per-user notification listing ordered by recency.
+
+### D.5 Immutability Enforcement
+
+| Table | Approach |
+|-------|----------|
+| `audit_logs` | App-level INSERT-only; DB-level: REVOKE UPDATE, DELETE on table from application role. Governance-mode S3 object lock for exported audit bundles. |
+| `case_notes` | App-level INSERT-only; DB-level: REVOKE UPDATE, DELETE from application role. |
+| `case_decisions` | App-level INSERT-only; multiple records per case_id expected for escalation chain. |
+| `case_ai_summaries` | App-level INSERT-only; new record on re-run (never update). |
+
+### D.6 Data Residency Rationale
+
+| Store | What belongs here | Why |
+|-------|-------------------|-----|
+| Aurora | Policies, cases, documents metadata, extracted data, rule evaluations, AI summaries, decisions, notes, audit logs, users | Relational integrity, complex queries, transactional consistency, system of record |
+| DynamoDB | Runtime state, locks, notifications, notification preferences | Low-latency key-value access, TTL, no relational joins needed |
+| S3 | Raw documents, policy files (upload staging), decision bundles, profile images, server access logs | Object storage, lifecycle management, presigned URL pattern |
+
+### D.7 PII Minimization
+
+- Aurora operational logs (slow query, error, general) MUST NOT contain PII. Parameterised queries recommended.
+- DynamoDB MUST NOT store PII in any attribute.
+- CloudWatch logs MUST NOT contain PII. Structured logging MUST redact applicant fields.
+- `audit_logs.performed_by` stores user ID (not PII). Display name resolved at read time.
+- `agent_executions.last_error_summary` MUST NOT contain PII.
+
+---
+
+## Appendix E: Infrastructure & Deployment Specification
+
+### E.1 IaC Scope
+
+All infrastructure MUST be defined in **Terraform** with the following module structure:
+
+| Module | Resources |
+|--------|-----------|
+| `networking` | VPC, subnets (public/private per AZ), NAT gateways, route tables, VPC endpoints, security groups |
+| `data` | Aurora PostgreSQL cluster, DynamoDB tables, S3 buckets |
+| `compute` | Lambda functions, SQS queues + DLQs, EventBridge rules |
+| `auth` | Cognito User Pool, identity provider federation, app clients |
+| `frontend` | Amplify app, branch configuration, custom domain |
+| `security` | WAF WebACL, Shield subscription, KMS keys, IAM roles/policies |
+| `observability` | CloudWatch log groups, metric alarms, dashboards, CloudTrail |
+| `dns` | Route 53 hosted zones, records, ACM certificates |
+
+### E.2 Environments
+
+| Environment | Purpose | Promotion path |
+|-------------|---------|----------------|
+| `dev` | Development and integration testing | Merge to `develop` branch → auto-deploy |
+| `tst` | QA, contract tests, performance tests | Merge to `release/*` → manual approve → deploy |
+| `prd` | Production | Tag release → manual approve → deploy with canary/blue-green |
+
+Each environment MUST be isolated (separate AWS account or at minimum separate VPC, IAM boundaries, and KMS keys).
+
+### E.3 Frontend Deployment (AWS Amplify)
+
+- The Next.js 14 frontend MUST be deployed via **AWS Amplify Hosting**.
+- Amplify MUST be configured with branch-based environments: `main` → prd, `develop` → dev, `release/*` → tst.
+- Amplify MUST integrate with **Amazon Cognito** for authentication (Amplify Auth category or direct Cognito SDK).
+- Custom domain mapping via Amplify custom domains backed by **Route 53** and **ACM** certificates.
+- Amplify build settings MUST include environment variables for ISR intervals, API base URL, and Cognito configuration.
+- Amplify SHOULD use CloudFront (automatically provisioned by Amplify) for edge delivery.
+
+### E.4 API Layer
+
+- **API Gateway** (REST or HTTP API) with stages per environment.
+- **Throttling:** Default 10,000 requests/second burst, 5,000 sustained (adjustable per endpoint).
+- **WAF** WebACL associated with the API Gateway stage.
+- **Custom domain:** `api-faststart-<env>.<domain>` via Route 53 alias + ACM certificate.
+- **Lambda authorizer** or Cognito authorizer for JWT validation.
+
+### E.5 Compute
+
+- **Lambda runtime:** Node.js 20.x or Python 3.12 (team choice; standardise across all functions).
+- **Packaging:** Layers for shared dependencies; individual function bundles < 50 MB.
+- **Reserved concurrency:** Set for critical-path Lambdas (ApplicationInit, ApplicationFinalize, DecisionSubmit) to prevent starvation. Recommended: 50–100 per function in prd.
+- **Timeout:** API-facing Lambdas ≤ 29 s. AI pipeline Lambdas ≤ 900 s (15 min max).
+- **DLQs:** Every SQS-triggered Lambda MUST have a DLQ configured with `maxReceiveCount = 3`.
+
+### E.6 AI Services
+
+- **Bedrock AgentCore:** Access via VPC interface endpoint (PrivateLink). IAM role with `bedrock:InvokeAgent`, `bedrock:InvokeModel`.
+- **Textract:** Access via VPC interface endpoint. IAM role with `textract:AnalyzeDocument`, `textract:DetectDocumentText`.
+- **Concurrency protection:** Lambda reserved concurrency for AI-invoking functions MUST be set to prevent overwhelming Bedrock/Textract service quotas.
+
+### E.7 Data
+
+- **Aurora PostgreSQL:** Multi-AZ, Serverless v2 recommended (min 0.5 ACU, max configurable per env). IAM authentication. Deletion protection enabled. PITR with 7-day retention (prd: 35 days). Performance Insights enabled.
+- **DynamoDB:** On-demand capacity mode recommended for unpredictable workloads. PITR enabled. KMS encryption with customer-managed key.
+- **S3 buckets:** Per §8. Additionally: `faststart-<env>-frontend-artifacts` (Amplify managed), `faststart-<env>-policy-definitions`, `faststart-<env>-server-access-logs`.
+
+### E.8 Secrets & Configuration
+
+- Database connection strings, API keys, Cognito client secrets → **AWS Secrets Manager** (rotated).
+- Non-secret configuration (ISR intervals, feature flags, SLA thresholds) → **SSM Parameter Store** (SecureString for sensitive values).
+- No secrets in code, environment variables, or CI/CD pipeline definitions. Lambda reads from Secrets Manager/SSM at cold start with caching.
+
+### E.9 Observability
+
+- **CloudWatch Logs:** All Lambda functions, API Gateway access logs, Aurora logs. Structured JSON format with `correlationId`, `caseId`, `userId` (non-PII), `action`.
+- **CloudWatch Metrics:** Custom metrics for case throughput, tool duration, error rates, DLQ depth.
+- **CloudWatch Alarms:** Per §5.9.5. Additionally: API Gateway 5xx rate > 1%, Lambda error rate > 5%, Aurora CPU > 80%, DLQ message age > 15 min.
+- **CloudTrail:** Enabled for all management events + data events for S3, DynamoDB, Aurora.
+- **Tracing:** AWS X-Ray SHOULD be enabled on Lambda and API Gateway for distributed tracing. X-Ray trace ID SHOULD be correlated with application `correlationId`.
+- **Dashboards:** Operational dashboard per environment showing: case pipeline throughput, stage durations, error rates by tool, DLQ depth, API latency percentiles.
+
+### E.10 CI/CD
+
+| Stage | Backend (IaC + Lambdas) | Frontend (Amplify) |
+|-------|------------------------|-------------------|
+| Lint | ESLint/Pylint + Terraform validate | ESLint + TypeScript check |
+| Unit test | Jest/Pytest | Jest + React Testing Library |
+| Security scan | Checkov (Terraform), Snyk/Trivy (dependencies) | Snyk/Trivy |
+| Contract tests | EventBridge JSON Schema validation; API schema tests | — |
+| Integration test | Deployed to dev, run API integration suite | Amplify preview deployment |
+| Terraform plan | Plan output reviewed (prd: manual approval) | — |
+| Deploy | Terraform apply + Lambda deploy | Amplify auto-build on branch push |
+| Smoke test | Health checks, sample case intake flow | Page load + auth flow |
+| Migration | Aurora schema migrations via versioned tool (e.g. Flyway/Alembic) | — |
+
+Frontend and backend pipelines MUST be independently deployable.
+
+---
+
+## Appendix F: Domain Hosting & Environment Routing
+
+### F.1 DNS Structure
+
+| Resource | Domain pattern | Hosted zone |
+|----------|---------------|-------------|
+| Frontend (Amplify) | `faststart-<env>.<org-domain>` (e.g. `faststart-prd.example.gov.uk`) | Route 53 |
+| API Gateway | `api-faststart-<env>.<org-domain>` | Route 53 |
+| Cognito hosted UI | `auth-faststart-<env>.<org-domain>` (custom domain on Cognito) | Route 53 |
+
+### F.2 Certificate Management
+
+- ACM certificates provisioned in `us-east-1` (for CloudFront) and the deployment region.
+- DNS validation via Route 53 CNAME records.
+- Certificates MUST cover wildcard or explicit subdomains per environment.
+- Auto-renewal managed by ACM.
+
+### F.3 Edge Security
+
+- CloudFront (provisioned by Amplify for frontend; optionally for API) with WAF WebACL.
+- Shield Standard enabled on CloudFront distributions and API Gateway.
+- WAF rules: AWS Managed Rules (Core, SQL injection, XSS) + rate-limiting rule (configurable per env).
+
+### F.4 DNS Cutover
+
+- Initial deployment uses Amplify-provided domain; custom domain mapped after DNS delegation.
+- Production cutover MUST use weighted routing (Route 53) for gradual traffic shift.
+- Rollback: revert Route 53 weighted record to previous deployment.
+
+---
+
+## Appendix G: HA, Resilience & Autoscaling
+
+### G.1 HA Expectations per Component
+
+| Component | HA mechanism | Failure domain |
+|-----------|-------------|----------------|
+| Aurora PostgreSQL | Multi-AZ with automatic failover | Single AZ failure |
+| DynamoDB | Multi-AZ by default (global tables optional) | Single AZ |
+| Lambda | Multi-AZ by default (VPC-attached: configure subnets in ≥ 2 AZs) | Single AZ |
+| S3 | 11 nines durability, cross-AZ | Regional |
+| API Gateway | Regional, multi-AZ | Single AZ |
+| Cognito | Regional, multi-AZ | Single AZ |
+| Amplify/CloudFront | Global edge | Single PoP |
+| EventBridge | Regional, multi-AZ | Single AZ |
+| SQS | Regional, multi-AZ | Single AZ |
+
+### G.2 Queue-Based Backpressure
+
+- EventBridge → SQS → Lambda pattern provides natural backpressure.
+- SQS visibility timeout MUST be ≥ Lambda timeout + buffer (e.g. Lambda 900 s → visibility 960 s).
+- Batch size for AI pipeline queue: 1 (one case per invocation for isolation).
+- DLQ `maxReceiveCount = 3`. DLQ messages retained for 14 days.
+
+### G.3 Lambda Concurrency Controls
+
+| Function group | Recommended reserved concurrency (prd) | Rationale |
+|---------------|---------------------------------------|-----------|
+| API-facing (portal) | 200 | Prevent API starvation |
+| Intake (init/complete) | 100 | Upstream burst protection |
+| AI pipeline | 50 | Protect Bedrock/Textract quotas |
+| Notification/email | 20 | Non-critical; protect SES rate limit |
+
+### G.4 Retry and Timeout Principles
+
+- **API Lambdas:** No automatic retry (API Gateway handles response). Application-level retry guidance returned to client.
+- **SQS-triggered Lambdas:** SQS retry with backoff (visibility timeout increase on failure). Max 3 attempts before DLQ.
+- **Textract/Bedrock calls:** Exponential backoff with jitter; max 3 retries within the tool invocation. Timeout per external call: 60 s (configurable).
+- **EventBridge delivery:** Built-in retry for up to 24 hours. DLQ for exhausted retries.
+
+### G.5 Idempotency Keys
+
+- Intake APIs: `caseId` + `submissionType` serves as natural idempotency key.
+- Decision submit: `caseId` + `decidedBy` + `decision` within a time window (prevent double-click).
+- Tool invocations: `caseId` + `tool_name` + Aurora status check (status guard = idempotency).
+- EventBridge events: `correlationId` + `detail-type` enables consumer deduplication.
+
+### G.6 RTO/RPO Guidance
+
+| Component | RPO | RTO | Mechanism |
+|-----------|-----|-----|-----------|
+| Aurora | Near-zero (Multi-AZ synchronous replication) | < 2 min (automatic failover) | Multi-AZ + PITR |
+| DynamoDB | Near-zero | < 1 min | Multi-AZ by design + PITR |
+| S3 | Zero (11 nines) | Immediate | Cross-AZ replication |
+| Lambda/API | N/A (stateless) | < 1 min (cold start) | Multi-AZ + auto-scaling |
+
+Specific RTO/RPO targets MUST be agreed with the operations team and published as part of the operational contract.
+
+### G.7 Operational Alarm Ownership
+
+All alarms defined in §5.9.5 and Appendix E.9 MUST have a documented owner (team/role), escalation path, and runbook reference. Alarm thresholds MUST be published and reviewed quarterly.
+
+---
+
+## Appendix H: EventBridge JSON Schema Examples
+
+### H.1 `CASE_INTAKE_VALIDATED` (JSON Schema draft 2020-12)
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://faststart.internal/schemas/events/case-intake-validated/1.0.0",
+  "title": "CASE_INTAKE_VALIDATED",
+  "description": "Emitted when intake finalisation succeeds and the case is ready for AI orchestration.",
+  "type": "object",
+  "required": ["caseId", "correlationId", "orgId", "policyVersion", "stage", "timestamp", "schemaVersion"],
+  "properties": {
+    "caseId": { "type": "string", "minLength": 1, "description": "Unique case identifier" },
+    "correlationId": { "type": "string", "format": "uuid", "description": "End-to-end traceability ID" },
+    "orgId": { "type": "string", "minLength": 1, "description": "Organisation identifier" },
+    "policyVersion": { "type": "integer", "minimum": 1, "description": "Locked policy version" },
+    "stage": { "type": "string", "const": "INTAKE_VALIDATED", "description": "Processing stage" },
+    "timestamp": { "type": "string", "format": "date-time", "description": "Event emission time (UTC)" },
+    "schemaVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$", "description": "Semver schema version" }
+  },
+  "additionalProperties": false
+}
+```
+
+### H.2 `CASE_AI_READY_FOR_REVIEW` (JSON Schema draft 2020-12)
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://faststart.internal/schemas/events/case-ai-ready-for-review/1.0.0",
+  "title": "CASE_AI_READY_FOR_REVIEW",
+  "description": "Emitted by Tool #5 when the case is ready for caseworker review.",
+  "type": "object",
+  "required": ["caseId", "correlationId", "orgId", "policyVersion", "stage", "timestamp", "schemaVersion"],
+  "properties": {
+    "caseId": { "type": "string", "minLength": 1 },
+    "correlationId": { "type": "string", "format": "uuid" },
+    "orgId": { "type": "string", "minLength": 1 },
+    "policyVersion": { "type": "integer", "minimum": 1 },
+    "stage": { "type": "string", "const": "READY_FOR_CASEWORKER_REVIEW" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "schemaVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "summaryId": { "type": "string", "description": "Reference to case_ai_summaries record" }
+  },
+  "additionalProperties": false
+}
+```
+
+---
+
+*End of FastStart Technical Specification (v1.2 + v1.2.1 Addendum)*
