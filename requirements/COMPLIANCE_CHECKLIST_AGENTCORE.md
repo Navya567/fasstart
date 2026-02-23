@@ -84,7 +84,7 @@ Implementation MUST provide the following APIs and behaviours. References: **§5
 | **Case list** | JWT → user_id → Aurora: cases by status (ASSIGNED, UNASSIGNED), pagination. `cases.assigned_to` determines ownership. | §6.3 Caseworker flows |
 | **Case assignment** | Assign/unassign/reassign actions update `cases.assigned_to` in Aurora. Each action writes an `audit_logs` entry (CASE_ASSIGNED / CASE_UNASSIGNED / CASE_REASSIGNED). | §6.3 Case assignment |
 | **Case details** | Lambda: case metadata (Aurora), AI analysis (Aurora as source of truth; DynamoDB optional cache/runtime pointers), documents (S3 presigned URLs). | §6.3 Caseworker flows |
-| **Case notes** | Notes persisted in Aurora `case_notes` table. Append-only (immutable once created). Each note includes `performed_by` and `created_at`. Notes MUST NOT be edited or deleted. | §6.3 Notes, §7.1 (5) |
+| **Case notes** | Notes persisted in Aurora `case_notes` table. Append-only (immutable once created). Each note includes `performed_by` and `created_at`. Notes MUST NOT be edited or deleted. Created via portal API (INSERT); case details API returns notes ordered by `created_at`; each creation writes `audit_logs` entry (NOTE_ADDED); access controlled by role + assignment. | §6.3 Notes + Notes API parity, §7.1 (5) |
 | **Decision (Approve / Decline / Escalate)** | Bedrock drafts email if used; Lambda updates Aurora status; audit log; SES; EventBridge; DynamoDB notifications. | §6.3 Caseworker flows |
 | **Optional AI email** | If caseworker sends email to citizen: Bedrock drafts → caseworker confirms → SES sends. Email content persisted in Aurora. `audit_logs` entry (EMAIL_SENT). No auto-send without caseworker confirmation. | §5.5, §6.3 |
 | **Notifications** | Notifications stored in DynamoDB `user_notifications` table. UI MUST support marking notifications as read/unread. | §6.3 Caseworker flows, §7.2 |
@@ -122,7 +122,7 @@ Implementation MUST conform to the following data responsibilities and table def
 | **Organisation & case setup** | organisations (PK organisation_id; name, status, created_at); case_types (PK case_type_id; organisation_id FK, name, status). | §7.1 (1) |
 | **Policy configuration** | policies; policy_documents; policy_extraction_fields; policy_rules; policy_fairness_constraints (with PKs and required attributes as in v1.2). | §7.1 (2) |
 | **Case & application** | cases (including `assigned_to` nullable FK); case_documents; extracted_case_data (with PKs and required attributes as in v1.2). | §7.1 (3) |
-| **Agent processing** | agent_executions; rule_evaluations (with PKs and required attributes as in v1.2). | §7.1 (4) |
+| **Agent processing** | agent_executions (PK agent_execution_id; case_id FK, correlation_id, tool_name, tool_attempt_number, tool_started_at, tool_ended_at, tool_outcome (SUCCESS/FAILURE/RETRYING/BLOCKED), last_error_code, last_error_time, last_error_summary — all nullable error fields); rule_evaluations (with PKs and required attributes as in v1.2). | §7.1 (4), §5.9.3 |
 | **Human decision, notes & audit** | case_decisions (multiple records per case_id for escalation chain); case_notes (PK note_id; case_id FK, note_text, performed_by, created_at — append-only/immutable); audit_logs (immutable) (with PKs and required attributes as in v1.2). | §7.1 (5) |
 
 **Common Aurora requirements:** KMS encryption, PITR, CloudTrail data events, tags (Environment, Owner=PublicSectorCaseTriage, Purpose=CaseManagement, Compliance=ISO27001,FedRAMP), **no PII in logs**. **§7.1** intro.
@@ -414,7 +414,7 @@ Implementation MUST enforce the following during policy upload and processing. R
 
 The following are left for product/architecture decisions; the checklist does not add or change v1.2:
 
-1. **EventBridge full event contract (Gap 9 — partial):** v1.2 now mandates `caseId` and `correlationId` in event `detail` (§5.3). However, the full contract (all required fields, JSON Schema validation tests, correlation ID propagation across all events) is not fully specified. **Not specified in v1.2.** See §11.1 in v1.2 for proposed wording.
+1. **EventBridge full event contract (Gap 9 — partial):** Minimum required fields (`caseId`, `correlationId`) are defined in §5.3. However, the full contract (additional fields, JSON Schema validation tests, correlation ID propagation across all events) is not fully specified. See §11.1 in v1.2 for proposed additional fields.
 2. **Strands Agents SDK:** v1.2 states “optionally via Strands Agents SDK or equivalent.” Whether “equivalent” includes any Bedrock AgentCore-compatible runtime is an implementation choice.
 3. **Manual replay mechanism:** v1.2 says the system MAY support replay and lists examples; which mechanism(s) to implement is a project decision.
 4. **Stage SLA threshold values:** v1.2 requires that thresholds be defined and published but does not specify numeric values; those are operational/contract decisions.

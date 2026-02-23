@@ -314,7 +314,7 @@ Per §3.1 ("No policy logic in code; policies loaded from versioned configuratio
 
 - Each agent handles failures explicitly; stops or flags for review
 - Partial outputs preserved
-- Workflow resumable (checkpoints in DynamoDB)
+- Workflow resumable from last successful **Aurora status checkpoint**; DynamoDB provides runtime lock/attempt state only.
 
 ---
 
@@ -381,7 +381,7 @@ Per §3.1 ("No policy logic in code; policies loaded from versioned configuratio
 
 **Aurora tables:** `policies`, `policy_documents`, `policy_extraction_fields`, `policy_rules`, `policy_fairness_constraints`
 
-*(Sample YAML policy structure is in section 6.4 / Appendix if needed.)*
+*Sample YAML policy structure: TBD (Appendix).*
 
 ---
 
@@ -598,7 +598,14 @@ Modular, cloud-native, event-driven design on AWS.
 | Case list | JWT → user_id → Aurora: cases by status (ASSIGNED, UNASSIGNED), pagination. The `cases.assigned_to` attribute determines ownership. Caseworkers see cases assigned to them; unassigned cases are visible based on role permissions. |
 | Case details | Lambda: case metadata (Aurora), AI analysis (Aurora as source of truth; DynamoDB optional cache/runtime pointers), documents (S3 presigned URLs) |
 | Decision (Approve / Decline / Escalate) | Bedrock drafts email if used; Lambda updates Aurora status; audit log; SES; EventBridge; DynamoDB notifications |
-| Notes | Caseworker notes MUST be persisted in Aurora (`case_notes` table). Notes are append-only (immutable once created): each note is a distinct record with `performed_by` and `created_at`. Notes MUST NOT be edited or deleted after creation. |
+| Notes | Caseworker notes MUST be persisted in Aurora (`case_notes` table). Notes are append-only (immutable once created): each note is a distinct record with `performed_by` and `created_at`. Notes MUST NOT be edited or deleted after creation. See Notes API details below. |
+
+**Notes API parity:**
+
+- Notes are created via a portal API action that INSERTs a new `case_notes` record (append-only).
+- The case details API returns notes ordered by `created_at`.
+- Each note creation writes an `audit_logs` entry with action=NOTE_ADDED (`performed_by`, `timestamp`).
+- Access is controlled by role and assignment rules (only users with access to the case may add or view notes).
 | Notifications & profile | Notifications from DynamoDB (`user_notifications` table); profile/image in S3. Notifications MUST support `read`/`unread` status. Notification preferences (enable/disable per notification type) MUST be stored per user. |
 
 **Case assignment:**
@@ -693,7 +700,7 @@ Modular, cloud-native, event-driven design on AWS.
 
 | Table | Primary key | Required attributes |
 |-------|-------------|---------------------|
-| **agent_executions** | agent_execution_id (String) | case_id (FK), agent_name, status (success/failed), executed_at |
+| **agent_executions** | agent_execution_id (String) | case_id (FK), correlation_id, tool_name, tool_attempt_number, tool_started_at, tool_ended_at, tool_outcome (SUCCESS/FAILURE/RETRYING/BLOCKED), last_error_code (nullable), last_error_time (nullable), last_error_summary (nullable, non-PII) |
 | **rule_evaluations** | evaluation_id (String) | case_id (FK), rule_id (FK), result (pass/fail/conditional), explanation |
 
 #### 5. Human decision, notes & audit
@@ -813,9 +820,9 @@ The following items were identified during compliance gap analysis. They are **n
 
 ### 11.1 EventBridge Full Event Contract (Gap 9 — partial)
 
-**Not specified in v1.2:** The full set of required fields in EventBridge `detail` payloads is not defined. v1.2 §5.3 shows the event structure with `"detail": { ... }` but does not enumerate mandatory fields beyond the minimum (`caseId`, `correlationId`) now stated in §5.3.
+Minimum required fields are defined in §5.3 (`caseId`, `correlationId`). The full set of **additional** required fields in EventBridge `detail` payloads is not yet defined. v1.2 §5.3 shows the event structure with `"detail": { ... }` and mandates `caseId` and `correlationId` but does not enumerate further mandatory fields.
 
-> **Proposed requirement:** All EventBridge events emitted by the system (e.g., `CASE_INTAKE_VALIDATED`, `CASE_AI_READY_FOR_REVIEW`) SHOULD include the following fields in `detail`: `caseId`, `orgId`, `policyVersion`, `stage`, `correlationId`, `timestamp`. A contract validation test SHOULD verify that emitted events conform to a published JSON Schema.
+> **Proposed requirement:** All EventBridge events emitted by the system (e.g., `CASE_INTAKE_VALIDATED`, `CASE_AI_READY_FOR_REVIEW`) SHOULD include the following **additional** fields in `detail` beyond the minimum: `orgId`, `policyVersion`, `stage`, `timestamp`. A contract validation test SHOULD verify that emitted events conform to a published JSON Schema.
 
 ### 11.2 Case Assignment Rules (Gap 6 — partial)
 
