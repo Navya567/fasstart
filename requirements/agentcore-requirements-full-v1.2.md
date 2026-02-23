@@ -192,6 +192,13 @@ The platform is built as a **cloud-native, event-driven, serverless** architectu
 5. State initialisation: Aurora + DynamoDB
 6. Presigned S3 URLs for documents
 
+**Policy version immutability:** The policy version resolved and locked at init MUST remain immutable for the lifetime of the case. No subsequent operation (including re-submission or update) may change the policy version associated with a case once it has been set.
+
+**Submission type handling (NEW vs UPDATE):**
+
+- `NEW`: Creates a new case with `applicationVersion = 1`. If a case with the same `caseId` already exists and is in a non-terminal state, the init request MUST be rejected (duplicate prevention).
+- `UPDATE`: Increments the `applicationVersion` for an existing `caseId`; the originally locked `policyVersion` MUST be preserved. The case state MUST be validated before accepting an update (e.g., case must not be in a terminal decision state).
+
 **Database writes:**
 
 - **DynamoDB** `case_runtime_state`: caseId, orgId, caseType, policyVersion, applicationVersion, status, timestamps
@@ -227,9 +234,14 @@ The platform is built as a **cloud-native, event-driven, serverless** architectu
 
 **Lambda: ApplicationFinalizeLambda**
 
-1. Load case context (policy, required documents)
-2. Inspect S3 uploads (presence, formats, version limits)
-3. Technical sanity checks (size, MIME type)
+1. Load case context (policy, required documents from `policy_documents`)
+2. Inspect S3 uploads against policy:
+   - Validate `manifest.json` presence where required by the policy
+   - Validate each required document type is present per `policy_documents.mandatory`
+   - Validate document version count does not exceed `policy_documents.max_versions`
+   - Validate lookback coverage against `policy_documents.lookback_period_months` (e.g., 3 months of payslips)
+   - Validate document MIME types against `policy_documents.accepted_formats` (policy-driven, not a static allowlist)
+3. Technical sanity checks (file size limits, MIME type consistency with file extension)
 4. Persist metadata to Aurora
 5. Update DynamoDB case state → **INTAKE_VALIDATED**
 6. Emit EventBridge event for AI orchestration
@@ -257,6 +269,8 @@ The platform is built as a **cloud-native, event-driven, serverless** architectu
 - EventBridge rule filters by detail-type → starts AI orchestration (Bedrock AgentCore)
 - Loose coupling, fan-out, observability
 
+**Minimum event `detail` payload:** The `detail` object MUST contain at minimum `caseId` (required for orchestration to identify the case) and a `correlationId` (required per §5.9.3 and §5.9.5 for end-to-end traceability). Additional fields (`orgId`, `policyVersion`, `stage`) are RECOMMENDED in the event payload to avoid redundant lookups. See *Ambiguities / Open Questions* for the full proposed contract.
+
 ---
 
 ### 5.4 Step 3 – Policy-Governed AI Orchestration (Agent Core)
@@ -275,6 +289,26 @@ The platform is built as a **cloud-native, event-driven, serverless** architectu
 | 3. Policy evaluation | Check rules, eligibility | Extracted data, policy | Rule results, explanations | POLICY_VALIDATED |
 | 4. Case summary & recommendation | Synthesise case summary | All prior outputs | Human-readable summary + recommendation | SUMMARY_READY |
 | 5. Mark ready for review | Release workflow lock, emit readiness event | Summary outputs, case state | Lock released, CASE_AI_READY_FOR_REVIEW emitted (idempotent) | READY_FOR_CASEWORKER_REVIEW |
+
+#### Tool #5 – Mark Ready: Validation and Transition Rules
+
+Tool #5 ("Mark ready for review") MUST enforce the following:
+
+1. **Pre-condition:** Validate that the case is in status `SUMMARY_READY` before attempting any transition. If not, the tool MUST reject the invocation or treat it as a no-op (idempotent).
+2. **Aurora status:** Set case status to `READY_FOR_CASEWORKER_REVIEW` in Aurora.
+3. **DynamoDB update:** Update `case_runtime_state.current_stage`, `status`, and `updated_at`.
+4. **Execution record:** Write an `agent_executions` entry (as required of all tools by §5.9.3).
+5. **Event emission:** Emit `CASE_AI_READY_FOR_REVIEW` via EventBridge.
+6. **Lock release:** Release any workflow lock held in DynamoDB.
+7. **Idempotency (strict):** Repeated invocations MUST NOT duplicate writes, events, or lock releases. If the case is already `READY_FOR_CASEWORKER_REVIEW`, the tool is a no-op (§5.8, §5.9.6).
+
+#### Policy Separation in Agent Context
+
+Per §3.1 ("No policy logic in code; policies loaded from versioned configuration") and the AgentCore-first note above:
+
+- **No policy logic in AgentCore prompts:** Agent system prompts, instructions, and any text injected into the LLM context MUST NOT contain policy rules, thresholds, eligibility criteria, or fairness constraints.
+- **No policy logic in agent instructions:** Agent instruction templates MUST NOT embed or hard-code policy content.
+- **Tools reference Aurora directly:** Deterministic tools MUST read policy data from Aurora policy tables (`policies`, `policy_rules`, `policy_fairness_constraints`, etc.) at execution time — never from embedded constants, prompt text, or cached YAML/S3 files.
 
 **Failure handling:**
 
@@ -298,9 +332,25 @@ The platform is built as a **cloud-native, event-driven, serverless** architectu
 | Case listing & notification | Read-only display of relevant cases, status, AI completion |
 | Individual case view | Read-only: applicant data, documents, extracted fields, policy evaluation, AI summary |
 | Human decision stage | Actions: Approve, Decline, Pending, Escalate → writes Aurora + DynamoDB (decision, justification, timestamp) |
-| Escalation workflow | Senior review if ambiguous; original decision locked, history preserved |
+| Escalation workflow | Senior review if ambiguous; original decision locked, history preserved (see below) |
 | Notification & downstream | EventBridge / SES / optional downstream notifications |
 | Audit & immutability | AI outputs frozen, policy version preserved, all actions timestamped and traceable |
+
+**Escalation immutability and history requirements:**
+
+- The original caseworker decision MUST be preserved immutably in `case_decisions`. An escalation MUST NOT mutate or overwrite the original decision record.
+- A manager resolution MUST create a **new** `case_decisions` record (with its own `decision_id`, `decided_by`, `justification`, `decided_at`), preserving the full chain of decisions for the case.
+- Managers MUST be able to view escalation history: all prior decisions for the case, including the original caseworker decision and any prior escalation decisions.
+- The `case_decisions` table supports multiple records per `case_id`, enabling a complete decision audit trail.
+
+**Optional AI-drafted email to citizen:**
+
+- Caseworkers MAY use the portal to send an email to the citizen (e.g., request more information) as noted in Screen 4.
+- If used: Bedrock drafts the email content; the caseworker reviews and confirms before sending.
+- The email MUST be sent via **SES** (or equivalent managed email service).
+- Each sent email MUST be recorded in the `audit_logs` table (entity_type, entity_id, action=EMAIL_SENT, performed_by, timestamp).
+- The email content (or a reference to it) MUST be persisted in Aurora for traceability.
+- The system MUST NOT send any email without explicit caseworker confirmation.
 
 ---
 
@@ -315,8 +365,11 @@ The platform is built as a **cloud-native, event-driven, serverless** architectu
 **Processing flow**
 
 1. Upload → S3 → ObjectCreated → EventBridge → Policy Lambda
-2. Schema & semantic validation (structure, fairness, no contradictions)
-3. Normalisation → machine-readable canonical form
+2. Validation (two stages):
+   - **Schema validation:** Structural correctness of the uploaded policy file (required fields, valid data types, well-formed YAML/JSON).
+   - **Semantic validation:** Logical consistency — no contradictory rules (e.g., conflicting thresholds for the same field), valid references between policy sections.
+   - **Fairness constraint enforcement:** Validate against `policy_fairness_constraints` table — prohibited attributes must not appear as decision criteria in `policy_rules` at `strict` enforcement level.
+3. Normalisation → machine-readable canonical form; normalised rules MUST produce a deterministic evaluation order to ensure consistent outcomes across executions.
 4. Persist in Aurora → runtime policy execution
 5. Activation → policy available for intake workflows
 
@@ -470,6 +523,7 @@ Modular, cloud-native, event-driven design on AWS.
 ### 6.2 Frontend Architecture (Caseworker Portal)
 
 - **Stack:** React 18 + TypeScript, Next.js 14 (SSG/ISR)
+- **Rendering:** User-facing portal pages MUST use SSG (Static Site Generation) or ISR (Incremental Static Regeneration) where applicable. Pages with primarily static content (login, settings, FAQ, AI Guide) SHOULD use SSG. Pages with dynamic case data (case list, homepage dashboards) MUST use ISR with appropriate revalidation intervals to balance freshness and performance.
 - **Deployment:** AWS Amplify (hosting, APIs, auth, backend environments)
 - **Access:** Amazon Cognito (SSO, role-based access for Caseworkers, Managers, Administrators)
 
@@ -540,25 +594,32 @@ Modular, cloud-native, event-driven design on AWS.
 | Flow | Description |
 |------|-------------|
 | Login | SSO via Cognito (e.g. Azure AD / Okta); JWT with role claims |
-| Dashboard | API Gateway → Lambda → Aurora (cases by assigned_to), stats, DynamoDB notifications |
-| Case list | JWT → user_id → Aurora: cases by status (ASSIGNED, UNASSIGNED), pagination |
+| Dashboard | API Gateway → Lambda → Aurora (cases by `assigned_to`), stats, DynamoDB notifications |
+| Case list | JWT → user_id → Aurora: cases by status (ASSIGNED, UNASSIGNED), pagination. The `cases.assigned_to` attribute determines ownership. Caseworkers see cases assigned to them; unassigned cases are visible based on role permissions. |
 | Case details | Lambda: case metadata (Aurora), AI analysis (Aurora as source of truth; DynamoDB optional cache/runtime pointers), documents (S3 presigned URLs) |
 | Decision (Approve / Decline / Escalate) | Bedrock drafts email if used; Lambda updates Aurora status; audit log; SES; EventBridge; DynamoDB notifications |
-| Notifications & profile | Notifications from DynamoDB; profile/image in S3 |
+| Notes | Caseworker notes MUST be persisted in Aurora (`case_notes` table). Notes are append-only (immutable once created): each note is a distinct record with `performed_by` and `created_at`. Notes MUST NOT be edited or deleted after creation. |
+| Notifications & profile | Notifications from DynamoDB (`user_notifications` table); profile/image in S3. Notifications MUST support `read`/`unread` status. Notification preferences (enable/disable per notification type) MUST be stored per user. |
+
+**Case assignment:**
+
+- The `cases` table MUST include an `assigned_to` attribute (FK to user/caseworker identifier).
+- Cases transition between UNASSIGNED and ASSIGNED states via assignment actions.
+- Assignment, unassignment, and reassignment actions MUST each write an `audit_logs` entry (action=CASE_ASSIGNED / CASE_UNASSIGNED / CASE_REASSIGNED, performed_by, timestamp).
 
 **Admin flows**
 
 - Login: same Cognito SSO, admin RBAC
 - Dashboard: case metrics, user stats, system health (CloudWatch)
-- User management: create, activate, deactivate, soft delete; Aurora + Cognito; audit log
+- User management: create, activate, deactivate, soft delete; Aurora + Cognito; audit log. Each user management action MUST write an `audit_logs` entry.
 - Policy configuration: upload JSON/YAML, validate, version in Aurora
 
 **Manager flows**
 
 - Dashboard & case access; escalation visibility
-- Escalation view: escalations by status, joined with case details
+- Escalation view: escalations by status, joined with case details; escalation history (all prior decisions for the case)
 - Escalation review: caseworker notes, case history, AI risk insights
-- Resolution: manager decision → Aurora → audit → EventBridge → notifications
+- Resolution: manager decision → new `case_decisions` record → Aurora → audit → EventBridge → notifications. The original caseworker decision MUST NOT be mutated (see §5.5).
 
 ### 6.4 Database Architecture
 
@@ -624,7 +685,7 @@ Modular, cloud-native, event-driven design on AWS.
 
 | Table | Primary key | Required attributes |
 |-------|-------------|---------------------|
-| **cases** | case_id (String) | organisation_id (FK), case_type_id (FK), policy_id (FK), policy_version, submission_type, applicant_reference, status, created_at, intake_completed_at |
+| **cases** | case_id (String) | organisation_id (FK), case_type_id (FK), policy_id (FK), policy_version, submission_type, applicant_reference, assigned_to (nullable, FK to user identifier), status, created_at, intake_completed_at |
 | **case_documents** | case_document_id (String) | case_id (FK), document_type, s3_object_path, version, upload_timestamp |
 | **extracted_case_data** | extracted_data_id (String) | case_id (FK), field_name, value, confidence_score |
 
@@ -635,18 +696,25 @@ Modular, cloud-native, event-driven design on AWS.
 | **agent_executions** | agent_execution_id (String) | case_id (FK), agent_name, status (success/failed), executed_at |
 | **rule_evaluations** | evaluation_id (String) | case_id (FK), rule_id (FK), result (pass/fail/conditional), explanation |
 
-#### 5. Human decision & audit
+#### 5. Human decision, notes & audit
 
 | Table | Primary key | Required attributes |
 |-------|-------------|---------------------|
 | **case_decisions** | decision_id (String) | case_id (FK), decision, decided_by, justification, decided_at |
+| **case_notes** | note_id (String) | case_id (FK), note_text, performed_by, created_at — **append-only (immutable once created)** |
 | **audit_logs** | audit_id (String) | entity_type, entity_id, action, performed_by, timestamp — **immutable** |
+
+**`case_notes` requirements:** Notes are created by caseworkers or managers on individual cases (§6.2 Screen 4, §6.3). Each note is a separate, immutable record. Notes MUST NOT be edited or deleted after creation. The `performed_by` field identifies the author; `created_at` provides the timestamp.
 
 ### 7.2 DynamoDB
 
 | Table | Primary key | Required attributes |
 |-------|-------------|---------------------|
 | **case_runtime_state** | case_id (String) | orgId, caseType, policyVersion, applicationVersion, current_stage (intake/validation/agent/review), status, lock_owner, updated_at, created_at |
+| **user_notifications** | notification_id (String) | user_id (String), case_id (optional), notification_type, message, status (unread/read), created_at |
+| **notification_preferences** | user_id (String) | preferences (map of notification_type → enabled/disabled), updated_at |
+
+**`user_notifications` requirements:** Notifications are created by EventBridge-triggered Lambdas (e.g., on case status changes, escalations, assignments) and stored in DynamoDB (§6.3 Caseworker flows). The UI MUST allow users to mark notifications as read/unread. Notification preferences (per `notification_preferences` table) control which notification types a user receives. Preferences MUST be editable from the Settings screen (§6.2 Screen 6).
 
 **Requirements:** KMS encryption, PITR, CloudTrail data events, same tags; **no PII stored or logged**; runtime only (no historical records).
 
@@ -668,10 +736,14 @@ Modular, cloud-native, event-driven design on AWS.
 
 **Lifecycle**
 
+The following lifecycle applies to **both** raw applicant documents **and** final case packs / decision bundles:
+
 - Day 0 → S3 Standard  
 - Day 30 → S3 Standard-IA  
 - Case closed +30–90 days → Glacier Flexible Retrieval  
 - Retention 5 years → then delete
+
+Decision bundles (generated after human decision) MUST follow the same lifecycle policy. They MUST be stored in a designated S3 prefix or bucket and tagged for lifecycle management.
 
 ### 8.2 S3 security requirements
 
@@ -707,6 +779,16 @@ Modular, cloud-native, event-driven design on AWS.
 - **Observability** – CloudWatch, CloudTrail, Aurora Performance Insights
 - **HA & DR** – Multi-AZ, automated backups, PITR, versioned S3
 
+**Network security requirements (detailed):**
+
+| Requirement | Detail |
+|-------------|--------|
+| **WAF** | AWS WAF MUST be deployed in front of API Gateway and CloudFront to protect against common web exploits (SQL injection, XSS, request flooding). |
+| **AWS Shield** | AWS Shield (Standard at minimum) MUST be enabled for DDoS protection on public-facing endpoints. |
+| **VPC segmentation** | Application and data resources MUST reside in **private subnets**. Public subnets are limited to load balancers / NAT gateways / CloudFront origins. |
+| **NAT** | Outbound internet access from private subnets MUST route through NAT gateways; no direct internet ingress to application or data subnets. |
+| **VPC endpoints** | VPC endpoints MUST be provisioned for AWS services accessed from private subnets: S3 (gateway endpoint), DynamoDB (gateway endpoint), Bedrock, SQS, EventBridge, Secrets Manager, CloudWatch Logs (interface endpoints). |
+
 ---
 
 ## 10. Naming Conventions
@@ -722,6 +804,42 @@ Modular, cloud-native, event-driven design on AWS.
 
 - S3 bucket: `<org-id>-<case-type>-applicant-intake-s3-<env>`
 - Lambda: `FastStart-<env>-application-init`, `FastStart-<env>-get-decision`, etc.
+
+---
+
+## 11. Ambiguities / Open Questions
+
+The following items were identified during compliance gap analysis. They are **not currently specified** in v1.2 as explicit requirements but may be needed for a fully workable end-to-end portal. They are documented here for product/architecture review — not as mandated requirements.
+
+### 11.1 EventBridge Full Event Contract (Gap 9 — partial)
+
+**Not specified in v1.2:** The full set of required fields in EventBridge `detail` payloads is not defined. v1.2 §5.3 shows the event structure with `"detail": { ... }` but does not enumerate mandatory fields beyond the minimum (`caseId`, `correlationId`) now stated in §5.3.
+
+> **Proposed requirement:** All EventBridge events emitted by the system (e.g., `CASE_INTAKE_VALIDATED`, `CASE_AI_READY_FOR_REVIEW`) SHOULD include the following fields in `detail`: `caseId`, `orgId`, `policyVersion`, `stage`, `correlationId`, `timestamp`. A contract validation test SHOULD verify that emitted events conform to a published JSON Schema.
+
+### 11.2 Case Assignment Rules (Gap 6 — partial)
+
+**Not specified in v1.2:** Whether case assignment is automatic (round-robin, load-based) or manual (caseworker claims / supervisor assigns) is not defined. v1.2 §6.3 references `assigned_to` and ASSIGNED/UNASSIGNED statuses but does not prescribe the assignment mechanism.
+
+> **Proposed requirement:** The system SHOULD support at minimum manual assignment (supervisor assigns case to caseworker) and self-claim (caseworker claims unassigned case). Auto-assignment MAY be supported as a configurable option. Access control MUST enforce that caseworkers can only view case details for cases assigned to them, unless their role explicitly permits broader access.
+
+### 11.3 ISR Revalidation Intervals (Gap 13 — partial)
+
+**Not specified in v1.2:** Specific ISR revalidation intervals per page are not defined. v1.2 §6.2 mandates Next.js 14 SSG/ISR but does not specify caching durations.
+
+> **Proposed requirement:** ISR revalidation intervals SHOULD be configurable per page type (e.g., case list: 30–60 seconds; homepage dashboard: 60 seconds; static pages: SSG with no revalidation). Specific values should be agreed during implementation.
+
+### 11.4 SES Email Triggers for Notifications (Gap 7 — partial)
+
+**Not specified in v1.2:** Whether system notifications (e.g., case assigned, escalation received) trigger SES emails in addition to in-app notifications is not explicitly defined. v1.2 §5.5 mentions "SES" in the context of optional citizen email but not for internal caseworker notifications.
+
+> **Proposed requirement:** The system MAY support SES-based email notifications for caseworkers/managers (e.g., case assignment, escalation alerts). If implemented, email sending MUST respect `notification_preferences` and MUST write an `audit_logs` entry per email.
+
+### 11.5 Risk Assessment Storage Model (Gap 5 — partial)
+
+**Not specified in v1.2:** The AI-generated risk assessment (shown on Screen 4) is mentioned as part of the case summary (§5.4 Tool #4, §6.2 Screen 4) but its specific storage table/column in Aurora is not defined. It is expected to reside in the agent outputs stored in Aurora (§6.4).
+
+> **Proposed requirement:** The AI-generated risk assessment MUST be stored in Aurora as part of the agent processing outputs (e.g., as a field in the case summary record or a dedicated `risk_assessment` column). The UI MUST display the risk assessment exactly as stored in Aurora (1:1 parity).
 
 ---
 
