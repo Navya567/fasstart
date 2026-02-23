@@ -65,6 +65,7 @@ Implementation MUST provide the following APIs and behaviours. References: **§5
 | | **S3 validation – manifest:** Validate `manifest.json` presence where required by the policy. | §5.2.3, §5.2.2 |
 | | **S3 validation – version limits:** Validate document version count does not exceed `policy_documents.max_versions`. | §5.2.3, §7.1 (2) |
 | | **S3 validation – lookback period:** Validate lookback coverage against `policy_documents.lookback_period_months`. | §5.2.3, §7.1 (2) |
+| | **S3 validation – mandatory docs:** Validate each required document type is present per `policy_documents.mandatory`. | §5.2.3, §7.1 (2) |
 | | **S3 validation – MIME types:** Validate document MIME types against `policy_documents.accepted_formats` (policy-driven, not static allowlist). | §5.2.3, §7.1 (2) |
 | | Database updates: DynamoDB status → INTAKE_VALIDATED; Aurora `case_documents` (case_id, document_type, s3_key, version, timestamp). | §5.2.3 |
 
@@ -183,6 +184,9 @@ Implementation MUST use Bedrock AgentCore for AI sequencing and MUST NOT use Ste
 | **3. Policy evaluation** | Check rules, eligibility | Extracted data, policy | Rule results, explanations | POLICY_VALIDATED | §5.4 table |
 | **4. Case summary & recommendation** | Synthesise case summary | All prior outputs | Human-readable summary + recommendation | SUMMARY_READY | §5.4 table |
 | **5. Mark ready for review** | Release workflow lock, emit readiness event | Summary outputs, case state | Lock released, CASE_AI_READY_FOR_REVIEW emitted (idempotent) | READY_FOR_CASEWORKER_REVIEW | §5.4 table |
+
+**All tools – execution recording:**
+All tools (1–5) MUST write an `agent_executions` record with required fields: `case_id`, `correlation_id`, `tool_name`, `tool_attempt_number`, `tool_started_at`, `tool_ended_at`, `tool_outcome` (SUCCESS/FAILURE/RETRYING/BLOCKED), and nullable error fields (`last_error_code`, `last_error_time`, `last_error_summary`). Ref: §5.9.3, §7.1 (4)
 
 **Readiness responsibilities (tool #5):**
 Tool #5 ("Mark ready for review") transitions a case from `SUMMARY_READY` to `READY_FOR_CASEWORKER_REVIEW` and MUST (a) release any workflow lock, and (b) emit `CASE_AI_READY_FOR_REVIEW` **idempotently**. This is an explicit, separately testable tool in the pipeline. Ref: §5.4, §5.8, §5.9.6
