@@ -1,7 +1,7 @@
 # FastStart – AgentCore-Driven Case Assessment System  
 ## Technical Specification – Architecture, Data, and Design (AgentCore-first)
 
-**Version:** 1.2.1  
+**Version:** 1.2  
 **Last updated:** February 2026
 
 
@@ -818,7 +818,7 @@ Decision bundles (generated after human decision) MUST follow the same lifecycle
 
 ## 11. Ambiguities / Open Questions
 
-Items §11.1–§11.5 have been **closed** by the v1.2.1 Decision Closure Addendum (§12). They are retained here for traceability with a CLOSED status. Remaining open items follow.
+Items §11.1–§11.5 have been **closed** by the v1.2 Decision Closure Addendum (§12). They are retained here for traceability with a CLOSED status. Remaining open items follow.
 
 ### 11.1 EventBridge Full Event Contract — **CLOSED**
 
@@ -858,7 +858,7 @@ v1.2 defines email audit and SES requirements (§5.5) but does not specify a ded
 
 ---
 
-## 12. v1.2.1 Decision Closure Addendum
+## 12. v1.2 Decision Closure Addendum
 
 This addendum formally closes the five open questions from §11.1–§11.5. Each decision is **binding** for implementation. Corresponding §11 entries are superseded.
 
@@ -1559,4 +1559,4 @@ All alarms defined in §5.9.5 and Appendix E.9 MUST have a documented owner (tea
 
 ---
 
-*End of FastStart Technical Specification (v1.2.1)*
+*End of FastStart Technical Specification (v1.2)*

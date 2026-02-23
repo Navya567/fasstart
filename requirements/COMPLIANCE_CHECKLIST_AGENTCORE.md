@@ -1,14 +1,14 @@
 # FastStart AgentCore-first Implementation Compliance Checklist
 
 **Source of truth:** `requirements/agentcore-requirements-full-v1.2.md` (canonical)  
-**Version:** 1.2.1  
-**Purpose:** Implementation teams use this checklist to verify parity with the consolidated FastStart Technical Specification v1.2.1. Every item traces to a specific section in v1.2.1.
+**Version:** 1.2  
+**Purpose:** Implementation teams use this checklist to verify parity with the consolidated FastStart Technical Specification v1.2. Every item traces to a specific section in v1.2.
 
 ---
 
 ## Confirmation: Source of Truth
 
-**v1.2.1 is the single source of truth** for this checklist. All requirements, constraints, appendices, and section references refer to the consolidated FastStart Technical Specification v1.2.1 (`requirements/agentcore-requirements-full-v1.2.md`), including §12 Decision Closure Addendum and Appendices A–H. No Step Functions for AI orchestration; AI sequencing is Bedrock AgentCore-driven. Tools are deterministic contracts (hosting may be Lambda or other service); sequencing is performed by AgentCore.
+**v1.2 is the single source of truth** for this checklist. All requirements, constraints, appendices, and section references refer to the consolidated FastStart Technical Specification v1.2 (`requirements/agentcore-requirements-full-v1.2.md`), including §12 Decision Closure Addendum and Appendices A–H. No Step Functions for AI orchestration; AI sequencing is Bedrock AgentCore-driven. Tools are deterministic contracts (hosting may be Lambda or other service); sequencing is performed by AgentCore.
 
 ---
 
@@ -414,9 +414,9 @@ Implementation MUST enforce the following during policy upload and processing. R
 
 ---
 
-## 10. Decision Closure Compliance (v1.2.1 Addendum)
+## 10. Decision Closure Compliance (v1.2 Addendum)
 
-Implementation MUST conform to the five decisions closed in **§12 of v1.2.1**. Each decision supersedes the corresponding former §11 ambiguity.
+Implementation MUST conform to the five decisions closed in **§12 of v1.2**. Each decision supersedes the corresponding former §11 ambiguity.
 
 ### 10.1 EventBridge Event Schema (§12.1)
 
@@ -470,7 +470,7 @@ Implementation MUST conform to the five decisions closed in **§12 of v1.2.1**. 
 
 ## 11. Frontend & API Parity Compliance
 
-Implementation MUST demonstrate end-to-end parity per the interaction matrix (**Appendix A**) and API contracts (**Appendix B**) of v1.2.1.
+Implementation MUST demonstrate end-to-end parity per the interaction matrix (**Appendix A**) and API contracts (**Appendix B**) of v1.2.
 
 ### 11.1 Interaction Matrix Coverage
 
@@ -518,7 +518,7 @@ Implementation MUST demonstrate end-to-end parity per the interaction matrix (**
 
 ## 12. Infrastructure, Deployment & Observability Compliance
 
-Implementation MUST conform to **Appendix E** (infra), **Appendix F** (domain), and **Appendix G** (HA) of v1.2.1.
+Implementation MUST conform to **Appendix E** (infra), **Appendix F** (domain), and **Appendix G** (HA) of v1.2.
 
 ### 12.1 Networking & Security
 
@@ -562,7 +562,7 @@ Implementation MUST conform to **Appendix E** (infra), **Appendix F** (domain), 
 
 ## 13. Requirements Coverage Matrix
 
-See the full coverage matrix mapping every user action → API → side effects → audit → data stores → events → UI refresh in **section 13 below** and cross-reference against **Appendix A** of v1.2.1. The matrix ensures no hidden gaps exist between frontend, API, database, audit, and event layers.
+See the full coverage matrix mapping every user action → API → side effects → audit → data stores → events → UI refresh in **section 13 below** and cross-reference against **Appendix A** of v1.2. The matrix ensures no hidden gaps exist between frontend, API, database, audit, and event layers.
 
 | User action | API | Audit | Stores | Event | Refresh |
 |-------------|-----|-------|--------|-------|---------|
@@ -604,10 +604,10 @@ See the full coverage matrix mapping every user action → API → side effects 
 
 Items §11.1–§11.5 have been **closed** by §12 (Decision Closure Addendum). The following items remain open:
 
-1. **Strands Agents SDK:** v1.2.1 §11.6 states "optionally via Strands Agents SDK or equivalent." Whether "equivalent" includes any Bedrock AgentCore-compatible runtime is an implementation choice.
-2. **Manual replay mechanism:** v1.2.1 §11.7 says the system MAY support replay and lists examples; which mechanism(s) to implement is a project decision.
-3. **Stage SLA threshold values:** v1.2.1 §11.8 requires thresholds be defined and published but does not specify numeric values; operational/contract decisions.
-4. **AI email API endpoint schema:** v1.2.1 §11.9 defines email audit and SES requirements (§5.5) but does not specify a dedicated endpoint. Whether `/email/draft` is explicit or embedded in decision flow is an implementation choice.
+1. **Strands Agents SDK:** v1.2 §11.6 states "optionally via Strands Agents SDK or equivalent." Whether "equivalent" includes any Bedrock AgentCore-compatible runtime is an implementation choice.
+2. **Manual replay mechanism:** v1.2 §11.7 says the system MAY support replay and lists examples; which mechanism(s) to implement is a project decision.
+3. **Stage SLA threshold values:** v1.2 §11.8 requires thresholds be defined and published but does not specify numeric values; operational/contract decisions.
+4. **AI email API endpoint schema:** v1.2 §11.9 defines email audit and SES requirements (§5.5) but does not specify a dedicated endpoint. Whether `/email/draft` is explicit or embedded in decision flow is an implementation choice.
 
 ---
 
@@ -779,4 +779,4 @@ When escalating an incident or preparing evidence for an audit, capture the foll
 
 ---
 
-*End of Compliance Checklist. All section references (§) refer to the consolidated FastStart Technical Specification v1.2.1 (`requirements/agentcore-requirements-full-v1.2.md`).*
+*End of Compliance Checklist. All section references (§) refer to the consolidated FastStart Technical Specification v1.2 (`requirements/agentcore-requirements-full-v1.2.md`).*

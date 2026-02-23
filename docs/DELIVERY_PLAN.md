@@ -1,6 +1,6 @@
 # FastStart – Implementation Delivery Plan
 
-**Spec version:** 1.2.1  
+**Spec version:** 1.2  
 **Plan version:** 1.0  
 **Date:** February 2026
 
