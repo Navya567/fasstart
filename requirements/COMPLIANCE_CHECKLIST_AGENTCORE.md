@@ -414,24 +414,200 @@ Implementation MUST enforce the following during policy upload and processing. R
 
 ---
 
-## Ambiguities / Open Questions (Do Not Change Requirements)
+## 10. Decision Closure Compliance (v1.2.1 Addendum)
 
-The following are left for product/architecture decisions; the checklist does not add or change v1.2:
+Implementation MUST conform to the five decisions closed in **§12 of v1.2.1**. Each decision supersedes the corresponding former §11 ambiguity.
 
-1. **EventBridge full event contract (Gap 9 — partial):** Minimum required fields (`caseId`, `correlationId`) are defined in §5.3. However, the full contract (additional fields, JSON Schema validation tests, correlation ID propagation across all events) is not fully specified. See §11.1 in v1.2 for proposed additional fields.
-2. **Strands Agents SDK:** v1.2 states “optionally via Strands Agents SDK or equivalent.” Whether “equivalent” includes any Bedrock AgentCore-compatible runtime is an implementation choice.
-3. **Manual replay mechanism:** v1.2 says the system MAY support replay and lists examples; which mechanism(s) to implement is a project decision.
-4. **Stage SLA threshold values:** v1.2 requires that thresholds be defined and published but does not specify numeric values; those are operational/contract decisions.
+### 10.1 EventBridge Event Schema (§12.1)
 
-5. **Case assignment rules (Gap 6 — partial):** v1.2 now defines the `assigned_to` attribute and assignment audit requirements (§6.3, §7.1). However, whether assignment is automatic (round-robin, load-based), manual (supervisor assigns), or self-claim (caseworker claims) is **not specified in v1.2.** See §11.2 in v1.2 for proposed wording including access control rules.
+| Item | Requirement | v1.2 ref |
+|------|-------------|----------|
+| **Mandatory detail fields** | Every system EventBridge event `detail` MUST contain: `caseId`, `correlationId` (UUID), `orgId`, `policyVersion`, `stage`, `timestamp` (ISO 8601 UTC), `schemaVersion` (semver). | §12.1 |
+| **Producer validation** | Producers MUST validate outbound events against registered JSON Schema. Validation failure prevents emission. | §12.1 |
+| **Consumer validation** | Consumers MUST validate inbound events; schema-invalid events routed to DLQ. | §12.1 |
+| **Contract tests in CI/CD** | CI/CD MUST include EventBridge JSON Schema contract tests to verify backward compatibility. | §12.1 |
+| **Schema versioning** | Semver. Breaking changes increment major version with coordinated deployment. | §12.1 |
 
-6. **ISR revalidation intervals (Gap 13 — partial):** v1.2 now mandates SSG/ISR rendering (§6.2) but specific revalidation intervals per page type are **not specified in v1.2.** See §11.3 in v1.2 for proposed wording.
+### 10.2 Case Assignment + Self-Claim (§12.2)
 
-7. **SES email triggers for caseworker/manager notifications (Gap 7 — partial):** v1.2 defines DynamoDB notification tables and in-app read/unread (§7.2). Whether system notifications also trigger SES emails to caseworkers/managers is **not specified in v1.2.** See §11.4 in v1.2 for proposed wording.
+| Item | Requirement | v1.2 ref |
+|------|-------------|----------|
+| **Manual assignment** | Manager/Admin can assign case by setting `cases.assigned_to`. | §12.2 |
+| **Concurrency-safe self-claim** | Caseworker claims unassigned case via atomic conditional update (single-winner). | §12.2 |
+| **409 Conflict on race** | Self-claim race condition returns HTTP 409 Conflict. | §12.2 |
+| **Role visibility rules** | CW: own + unassigned (own org). MGR: all in org. ADM: all across orgs. | §12.2 |
+| **Audit: CASE_CLAIMED** | Self-claim writes `audit_logs` entry with action=CASE_CLAIMED. | §12.2 |
 
-8. **Risk assessment storage model (Gap 5 — partial):** The AI-generated risk assessment is mentioned in §5.4 Tool #4 and §6.2 Screen 4 but its specific Aurora storage location is **not specified in v1.2.** See §11.5 in v1.2 for proposed wording requiring 1:1 UI ↔ Aurora parity for risk assessment.
+### 10.3 Risk Assessment Storage (§12.3)
 
-9. **AI email API endpoint schema (Gap 14 — partial):** v1.2 now defines the email audit and SES requirements (§5.5) but does not specify a dedicated API endpoint schema for email drafting. Whether the email drafting uses an explicit `/email/draft` endpoint or is embedded in the decision flow is an implementation choice.
+| Item | Requirement | v1.2 ref |
+|------|-------------|----------|
+| **`case_ai_summaries` table** | New Aurora table with JSONB `risk_assessment` field. | §12.3, App D |
+| **Written by Tool #4** | Record created on successful Tool #4 execution. | §12.3 |
+| **UI 1:1 parity** | UI displays risk assessment exactly as stored in Aurora. No client-side derivation. | §12.3 |
+| **Immutable** | INSERT-only. Re-run creates new record; UI shows most recent by `created_at`. | §12.3 |
+
+### 10.4 ISR Revalidation Defaults (§12.4)
+
+| Item | Requirement | v1.2 ref |
+|------|-------------|----------|
+| **Per-page defaults** | Login/Settings/FAQ = SSG. Homepage = ISR 60 s. Case list / Escalations = ISR 30 s. Case detail / User mgmt / Policy mgmt = SSR + client fetch. Notifications = client-side fetch. | §12.4 |
+| **Mutation-triggered refresh** | Any mutation MUST trigger immediate client-side refetch. MUST NOT rely on ISR window. | §12.4 |
+| **Env-configurable** | ISR intervals configurable via environment variables. | §12.4 |
+
+### 10.5 Internal Notification Email (§12.5)
+
+| Item | Requirement | v1.2 ref |
+|------|-------------|----------|
+| **Optional SES secondary** | In-app DynamoDB notifications remain primary. SES email = optional secondary channel. | §12.5 |
+| **Org-level enablement** | Email notifications configurable per org (enabled/disabled). | §12.5 |
+| **User opt-in/out** | Per notification type; email pref independent of in-app pref. | §12.5 |
+| **Eligible types** | CASE_ASSIGNED, ESCALATION_RECEIVED, CASE_DECISION_REQUIRED at launch. | §12.5 |
+| **Audit: INTERNAL_EMAIL_SENT** | Each sent email writes `audit_logs` entry. | §12.5 |
+| **Non-blocking delivery** | SES failure MUST NOT fail primary business action. Failures logged + monitored. | §12.5 |
+
+---
+
+## 11. Frontend & API Parity Compliance
+
+Implementation MUST demonstrate end-to-end parity per the interaction matrix (**Appendix A**) and API contracts (**Appendix B**) of v1.2.1.
+
+### 11.1 Interaction Matrix Coverage
+
+| Item | Requirement | v1.2 ref |
+|------|-------------|----------|
+| **All 29 actions mapped** | Every user action in App A (rows 1–29) MUST have a working API endpoint with correct backend side effects. | App A |
+| **Audit coverage** | Every action with an audit column value MUST write the specified `audit_logs` entry. | App A |
+| **EventBridge coverage** | Every action with an EventBridge column MUST emit the specified event with §12.1 schema. | App A, §12.1 |
+| **Standard error shape** | API errors return `{ error: { code, message, correlationId } }`. | App B.1 |
+| **Correlation ID propagation** | `X-Correlation-Id` propagated: frontend → API → EventBridge → AgentCore → tools → logs. | App B.1, App C.6 |
+
+### 11.2 Auth & Session
+
+| Item | Requirement | v1.2 ref |
+|------|-------------|----------|
+| **Cognito SSO** | OIDC/SAML with enterprise IdP. JWT contains role claims. | §6.2, §6.3 |
+| **Token handling** | Secure storage (httpOnly cookies or Amplify Auth). Backend validates JWT on every request. | §6.2 |
+| **RBAC defense-in-depth** | Role enforcement at UI (hide/disable) AND API (reject 403). | App A, §12.2 |
+
+### 11.3 Pagination, Sorting, Filtering
+
+| Item | Requirement | v1.2 ref |
+|------|-------------|----------|
+| **Query params** | `page`, `pageSize` (default 20, max 100), `sortBy`, `sortOrder`, `status`, `orgId` (admin), `q`. | App A |
+| **Response shape** | `{ items, totalCount, page, pageSize, hasMore }`. | App A |
+
+### 11.4 Amplify Deployment
+
+| Item | Requirement | v1.2 ref |
+|------|-------------|----------|
+| **AWS Amplify Hosting** | Next.js 14 frontend deployed via Amplify. | §6.2, App E.3 |
+| **Branch strategy** | `main` → prd, `develop` → dev, `release/*` → tst. | App E.3 |
+| **Custom domain** | Via Route 53 + ACM. | App E.3, App F |
+| **Cognito integration** | Amplify Auth configured with Cognito User Pool. | App E.3 |
+
+### 11.5 API Idempotency
+
+| Item | Requirement | v1.2 ref |
+|------|-------------|----------|
+| **Intake idempotency** | caseId + submissionType as natural key. Duplicate NEW rejected. | App G.5 |
+| **Decision idempotency** | Same decision by same user within window returns existing record. | App G.5 |
+| **Tool idempotency** | Aurora status guard prevents duplicate side effects. | App G.5, §5.9.6 |
+
+---
+
+## 12. Infrastructure, Deployment & Observability Compliance
+
+Implementation MUST conform to **Appendix E** (infra), **Appendix F** (domain), and **Appendix G** (HA) of v1.2.1.
+
+### 12.1 Networking & Security
+
+| Item | Requirement | v1.2 ref |
+|------|-------------|----------|
+| **VPC segmentation** | Private subnets for compute/data; public for NAT/LB only. | §9, App E.1 |
+| **VPC endpoints** | S3, DynamoDB (gateway); Bedrock, SQS, EventBridge, Secrets Mgr, CW Logs (interface). | §9, App E.1 |
+| **WAF + Shield** | WebACL on API GW + CloudFront. Shield Standard on public endpoints. | §9, App F.3 |
+
+### 12.2 Compute & Data
+
+| Item | Requirement | v1.2 ref |
+|------|-------------|----------|
+| **Lambda concurrency** | Reserved concurrency for critical Lambdas per App G.3. | App E.5, App G.3 |
+| **DLQs** | Every SQS-triggered Lambda has DLQ (maxReceiveCount = 3). | App E.5 |
+| **Aurora Multi-AZ** | Enabled with automatic failover. PITR enabled. Deletion protection on. | §9, App G.1 |
+| **DynamoDB on-demand** | On-demand capacity. PITR enabled. KMS encryption. | App E.7 |
+
+### 12.3 Observability & CI/CD
+
+| Item | Requirement | v1.2 ref |
+|------|-------------|----------|
+| **Structured JSON logging** | `correlationId`, `caseId` in every log line. No PII. | App E.9 |
+| **CloudWatch alarms** | Per §5.9.5 + API 5xx, Lambda errors, Aurora CPU, DLQ age. | App E.9 |
+| **X-Ray tracing** | SHOULD be enabled on Lambda + API Gateway. | App E.9 |
+| **Operational dashboard** | Throughput, stage durations, error rates, DLQ depth, API latency. | App E.9 |
+| **CI/CD pipeline** | Lint → test → scan → contract tests → plan → deploy → smoke. | App E.10 |
+| **Separate frontend/backend** | Amplify and Terraform/Lambda independently deployable. | App E.10 |
+
+### 12.4 HA & Resilience
+
+| Item | Requirement | v1.2 ref |
+|------|-------------|----------|
+| **Queue backpressure** | SQS visibility timeout ≥ Lambda timeout + buffer. Batch size = 1 for AI queue. | App G.2 |
+| **RTO/RPO** | Aurora < 2 min RTO. DynamoDB < 1 min. Targets agreed with ops team. | App G.6 |
+| **Alarm ownership** | Every alarm has documented owner, escalation path, runbook reference. | App G.7 |
+| **Secrets management** | Secrets Manager for credentials (rotated). SSM for config. No secrets in code. | App E.8 |
+| **DNS/domain** | Route 53 hosted zones. ACM certs. Frontend: `faststart-<env>.<domain>`. API: `api-faststart-<env>.<domain>`. | App F |
+
+---
+
+## 13. Requirements Coverage Matrix
+
+See the full coverage matrix mapping every user action → API → side effects → audit → data stores → events → UI refresh in **section 13 below** and cross-reference against **Appendix A** of v1.2.1. The matrix ensures no hidden gaps exist between frontend, API, database, audit, and event layers.
+
+| User action | API | Audit | Stores | Event | Refresh |
+|-------------|-----|-------|--------|-------|---------|
+| Login | Cognito | CloudTrail | Cognito | — | Redirect |
+| Dashboard | GET /portal/dashboard | — | Aurora, DDB | — | ISR 60 s |
+| Case list | GET /portal/cases | — | Aurora | — | ISR 30 s |
+| Case detail | GET /portal/cases/{id} | — | Aurora, S3 | — | SSR+SWR |
+| Add note | POST …/notes | NOTE_ADDED | Aurora | — | Refetch |
+| Self-claim | POST …/claim | CASE_CLAIMED | Aurora | CASE_ASSIGNED | Refetch |
+| Assign | POST …/assign | CASE_ASSIGNED | Aurora | CASE_ASSIGNED | Refetch |
+| Unassign | POST …/unassign | CASE_UNASSIGNED | Aurora | CASE_UNASSIGNED | Refetch |
+| Reassign | POST …/reassign | CASE_REASSIGNED | Aurora | CASE_REASSIGNED | Refetch |
+| Approve | POST …/decision | DECISION_APPROVED | Aurora, DDB | CASE_DECISION_MADE | Redirect |
+| Decline | POST …/decision | DECISION_DECLINED | Aurora, DDB | CASE_DECISION_MADE | Redirect |
+| Pending | POST …/decision | DECISION_PENDING | Aurora | CASE_STATUS_CHANGED | Refetch |
+| Escalate | POST …/decision | DECISION_ESCALATED | Aurora, DDB | CASE_ESCALATED | Redirect |
+| Draft email | POST …/email/draft | — | — | — | Show draft |
+| Send email | POST …/email/send | EMAIL_SENT | Aurora | CITIZEN_EMAIL_SENT | Close |
+| Notifications | GET /portal/notifications | — | DDB | — | Poll |
+| Mark read | PATCH …/notifications/{id} | — | DDB | — | Optimistic |
+| Notif prefs | PUT …/settings/notifications | PREFERENCES_UPDATED | DDB | — | Optimistic |
+| Upload avatar | POST …/profile/image | — | S3 | — | Refetch |
+| Escalations | GET /portal/escalations | — | Aurora | — | ISR 30 s |
+| Mgr resolve | POST …/decision | MANAGER_DECISION | Aurora, DDB | CASE_DECISION_MADE | Redirect |
+| List users | GET /portal/admin/users | — | Aurora | — | SSR |
+| Create user | POST /portal/admin/users | USER_CREATED | Aurora, Cognito | — | Refetch |
+| Update user | PATCH …/users/{id} | USER_* | Aurora, Cognito | — | Refetch |
+| Delete user | DELETE …/users/{id} | USER_DELETED | Aurora, Cognito | — | Refetch |
+| List policies | GET /portal/admin/policies | — | Aurora | — | SSR |
+| Upload policy | POST …/policies/upload | POLICY_UPLOADED | S3, Aurora | POLICY_UPLOADED | Async |
+| Activate policy | POST …/policies/{id}/activate | POLICY_ACTIVATED | Aurora | POLICY_ACTIVATED | Refetch |
+| Intake init | POST /applications/init | CASE_INITIATED | Aurora, DDB | — | — |
+| Intake complete | POST /applications/complete | INTAKE_COMPLETED | Aurora, DDB | CASE_INTAKE_VALIDATED | — |
+| Get decision | GET /applications/{id}/decision | — | Aurora | — | — |
+
+---
+
+## Ambiguities / Open Questions (Remaining)
+
+Items §11.1–§11.5 from v1.2 have been **closed** by §12 (v1.2.1 Decision Closure Addendum). The following items remain open:
+
+1. **Strands Agents SDK:** v1.2 states "optionally via Strands Agents SDK or equivalent." Whether "equivalent" includes any Bedrock AgentCore-compatible runtime is an implementation choice.
+2. **Manual replay mechanism:** v1.2 says the system MAY support replay and lists examples; which mechanism(s) to implement is a project decision.
+3. **Stage SLA threshold values:** v1.2 requires thresholds be defined and published but does not specify numeric values; operational/contract decisions.
+4. **AI email API endpoint schema:** v1.2 defines email audit and SES requirements (§5.5) but does not specify a dedicated endpoint. Whether `/email/draft` is explicit or embedded in decision flow is an implementation choice.
 
 ---
 
