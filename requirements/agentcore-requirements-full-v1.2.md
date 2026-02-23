@@ -1559,4 +1559,4 @@ All alarms defined in §5.9.5 and Appendix E.9 MUST have a documented owner (tea
 
 ---
 
-*End of FastStart Technical Specification (v1.2 + v1.2.1 Addendum)*
+*End of FastStart Technical Specification (v1.2.1)*

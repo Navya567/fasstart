@@ -1,14 +1,14 @@
 # FastStart AgentCore-first Implementation Compliance Checklist
 
 **Source of truth:** `requirements/agentcore-requirements-full-v1.2.md` (canonical)  
-**Version:** 1.2  
-**Purpose:** Implementation teams use this checklist to verify parity with the AgentCore-first specification. Every item traces to a specific section in v1.2.
+**Version:** 1.2.1  
+**Purpose:** Implementation teams use this checklist to verify parity with the consolidated FastStart Technical Specification v1.2.1. Every item traces to a specific section in v1.2.1.
 
 ---
 
 ## Confirmation: Source of Truth
 
-**v1.2 is the single source of truth** for this checklist. All requirements, constraints, and section references refer to `requirements/agentcore-requirements-full-v1.2.md`. No Step Functions for AI orchestration; AI sequencing is Bedrock AgentCore-driven. Tools are deterministic contracts (hosting may be Lambda or other service); sequencing is performed by AgentCore.
+**v1.2.1 is the single source of truth** for this checklist. All requirements, constraints, appendices, and section references refer to the consolidated FastStart Technical Specification v1.2.1 (`requirements/agentcore-requirements-full-v1.2.md`), including §12 Decision Closure Addendum and Appendices A–H. No Step Functions for AI orchestration; AI sequencing is Bedrock AgentCore-driven. Tools are deterministic contracts (hosting may be Lambda or other service); sequencing is performed by AgentCore.
 
 ---
 
@@ -171,8 +171,8 @@ Implementation MUST use Bedrock AgentCore for AI sequencing and MUST NOT use Ste
 |------|-------------|----------|
 | **Trigger** | Successful intake validation → EventBridge emits CASE_INTAKE_VALIDATED. | §5.3 |
 | **Event structure** | source, detail-type (CASE_INTAKE_VALIDATED), detail. | §5.3 |
-| **Minimum event contract** | `detail` payload MUST contain at minimum: `caseId` (required for orchestration) and `correlationId` (required for end-to-end traceability per §5.9.3/§5.9.5). Additional fields (`orgId`, `policyVersion`, `stage`) RECOMMENDED. | §5.3 |
-| **Readiness event** | `CASE_AI_READY_FOR_REVIEW` event MUST also carry `caseId` and `correlationId` at minimum. | §5.3, §5.4 |
+| **Mandatory event contract** | All EventBridge event `detail` payloads MUST contain the §12.1 mandatory fields: `caseId`, `correlationId`, `orgId`, `policyVersion`, `stage`, `timestamp`, `schemaVersion`. | §5.3, §12.1 |
+| **Readiness event** | `CASE_AI_READY_FOR_REVIEW` MUST carry all §12.1 mandatory fields plus event-specific required field `summaryId` (per Appendix H.2). | §5.3, §5.4, §12.1, App H.2 |
 | **Consumer** | EventBridge rule filters by detail-type → starts AI orchestration (Bedrock AgentCore). | §5.3 |
 
 ### 4.3 Tool Contracts (Deterministic Execution)
@@ -602,12 +602,12 @@ See the full coverage matrix mapping every user action → API → side effects 
 
 ## Ambiguities / Open Questions (Remaining)
 
-Items §11.1–§11.5 from v1.2 have been **closed** by §12 (v1.2.1 Decision Closure Addendum). The following items remain open:
+Items §11.1–§11.5 have been **closed** by §12 (Decision Closure Addendum). The following items remain open:
 
-1. **Strands Agents SDK:** v1.2 states "optionally via Strands Agents SDK or equivalent." Whether "equivalent" includes any Bedrock AgentCore-compatible runtime is an implementation choice.
-2. **Manual replay mechanism:** v1.2 says the system MAY support replay and lists examples; which mechanism(s) to implement is a project decision.
-3. **Stage SLA threshold values:** v1.2 requires thresholds be defined and published but does not specify numeric values; operational/contract decisions.
-4. **AI email API endpoint schema:** v1.2 defines email audit and SES requirements (§5.5) but does not specify a dedicated endpoint. Whether `/email/draft` is explicit or embedded in decision flow is an implementation choice.
+1. **Strands Agents SDK:** v1.2.1 §11.6 states "optionally via Strands Agents SDK or equivalent." Whether "equivalent" includes any Bedrock AgentCore-compatible runtime is an implementation choice.
+2. **Manual replay mechanism:** v1.2.1 §11.7 says the system MAY support replay and lists examples; which mechanism(s) to implement is a project decision.
+3. **Stage SLA threshold values:** v1.2.1 §11.8 requires thresholds be defined and published but does not specify numeric values; operational/contract decisions.
+4. **AI email API endpoint schema:** v1.2.1 §11.9 defines email audit and SES requirements (§5.5) but does not specify a dedicated endpoint. Whether `/email/draft` is explicit or embedded in decision flow is an implementation choice.
 
 ---
 
@@ -779,4 +779,4 @@ When escalating an incident or preparing evidence for an audit, capture the foll
 
 ---
 
-*End of Compliance Checklist. All section references (§) refer to `requirements/agentcore-requirements-full-v1.2.md`.*
+*End of Compliance Checklist. All section references (§) refer to the consolidated FastStart Technical Specification v1.2.1 (`requirements/agentcore-requirements-full-v1.2.md`).*
