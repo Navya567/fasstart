@@ -598,7 +598,8 @@ Modular, cloud-native, event-driven design on AWS.
 | Case list | JWT → user_id → Aurora: cases by status (ASSIGNED, UNASSIGNED), pagination. The `cases.assigned_to` attribute determines ownership. Caseworkers see cases assigned to them; unassigned cases are visible based on role permissions. |
 | Case details | Lambda: case metadata (Aurora), AI analysis (Aurora as source of truth; DynamoDB optional cache/runtime pointers), documents (S3 presigned URLs) |
 | Decision (Approve / Decline / Escalate) | Bedrock drafts email if used; Lambda updates Aurora status; audit log; SES; EventBridge; DynamoDB notifications |
-| Notes | Caseworker notes MUST be persisted in Aurora (`case_notes` table). Notes are append-only (immutable once created): each note is a distinct record with `performed_by` and `created_at`. Notes MUST NOT be edited or deleted after creation. See Notes API details below. |
+| Notes | Caseworker notes MUST be persisted in Aurora (`case_notes` table). Notes are append-only (immutable once created): each note is a distinct record with `performed_by` and `created_at`. Notes MUST NOT be edited or deleted after creation. See Notes API parity below. |
+| Notifications & profile | Notifications from DynamoDB (`user_notifications` table); profile/image in S3. Notifications MUST support `read`/`unread` status. Notification preferences (enable/disable per notification type) MUST be stored per user. |
 
 **Notes API parity:**
 
@@ -606,7 +607,6 @@ Modular, cloud-native, event-driven design on AWS.
 - The case details API returns notes ordered by `created_at`.
 - Each note creation writes an `audit_logs` entry with action=NOTE_ADDED (`performed_by`, `timestamp`).
 - Access is controlled by role and assignment rules (only users with access to the case may add or view notes).
-| Notifications & profile | Notifications from DynamoDB (`user_notifications` table); profile/image in S3. Notifications MUST support `read`/`unread` status. Notification preferences (enable/disable per notification type) MUST be stored per user. |
 
 **Case assignment:**
 
